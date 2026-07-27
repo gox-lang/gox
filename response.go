@@ -423,6 +423,7 @@ type Cookie struct {
 	HttpOnly bool
 	Secure   bool
 	SameSite SameSite
+	Expired  bool
 }
 
 type SameSite int

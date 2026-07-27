@@ -298,3 +298,28 @@ func TestResponseCookieNamesRemainCaseSensitive(t *testing.T) {
 		t.Fatalf("cookie names should remain case-sensitive: %#v", res.Cookies.Values())
 	}
 }
+
+func TestResponseCookiesSetPreservesExpiredFlag(t *testing.T) {
+	res := NewResponse()
+	res.Cookies.Set(Cookie{Name: "session", Value: "active", Expired: true})
+
+	got := res.Cookies.Get("session")
+	if !got.Expired {
+		t.Fatal("Get should preserve Expired=true")
+	}
+	if got.Value != "active" {
+		t.Fatalf("Set should not transform the cookie value: %q", got.Value)
+	}
+
+	pending := res.Cookies.PendingValues()["session"]
+	if len(pending) != 1 || !pending[0].Expired {
+		t.Fatalf("PendingValues should preserve Expired=true: %#v", pending)
+	}
+}
+
+func TestCookieExpiredDefaultsToFalse(t *testing.T) {
+	cookie := Cookie{Name: "session"}
+	if cookie.Expired {
+		t.Fatal("Expired zero value should be false")
+	}
+}
