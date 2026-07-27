@@ -244,7 +244,12 @@ func (h *ResponseHeaders) Contains(key string, value string) bool {
 	if h == nil || key == "" || value == "" {
 		return false
 	}
-	return containsFold(h.Get(key), value)
+	for _, current := range h.GetAll(key) {
+		if containsFold(current, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsFold(s string, substr string) bool {
@@ -583,7 +588,6 @@ func (r *Response) redirect(status int, location string) {
 	if r == nil {
 		return
 	}
-	r.ensureMutable()
 	location = strings.TrimSpace(location)
 	file, line := responseFlowCallsite()
 	if location == "" {
@@ -597,8 +601,8 @@ func (r *Response) redirect(status int, location string) {
 		})
 	}
 
-	r.Status.setCodeInternal(status)
 	r.Headers.Set("Location", location)
+	r.Status.setCodeInternal(status)
 	panic(FlowControl{
 		Kind:       FlowRedirect,
 		StatusCode: status,

@@ -193,3 +193,45 @@ func TestResponseHeadersValuesAndRangeExposeNormalizedKeys(t *testing.T) {
 		t.Fatalf("Range did not expose normalized keys: %#v", seen)
 	}
 }
+
+func TestResponseHeadersContainsSearchesEveryValue(t *testing.T) {
+	res := NewResponse()
+	res.Headers.Append("Vary", "Accept-Encoding")
+	res.Headers.Append("Vary", "Origin")
+
+	if !res.Headers.Contains("VARY", "origin") {
+		t.Fatal("Contains should inspect every value and compare case-insensitively")
+	}
+	if res.Headers.Contains("Vary", "authorization") {
+		t.Fatal("Contains reported a value that is not present")
+	}
+}
+
+func TestResponseRedirectChecksMutabilityOnce(t *testing.T) {
+	checks := 0
+	SetRuntimeResponseMutationGuard(func(*Response) bool {
+		checks++
+		return true
+	})
+	defer SetRuntimeResponseMutationGuard(nil)
+
+	res := NewResponse()
+	defer func() {
+		recovered := recover()
+		flow, ok := recovered.(FlowControl)
+		if !ok || flow.Kind != FlowRedirect {
+			t.Fatalf("unexpected redirect panic: %#v", recovered)
+		}
+		if checks != 1 {
+			t.Fatalf("mutation guard checks = %d, want 1", checks)
+		}
+		if res.Status.GetCode() != 307 {
+			t.Fatalf("redirect status = %d, want 307", res.Status.GetCode())
+		}
+		if got := res.Headers.Get("Location"); got != "/next" {
+			t.Fatalf("redirect location = %q, want /next", got)
+		}
+	}()
+
+	res.Redirect.Temporary(" /next ")
+}
