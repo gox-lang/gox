@@ -235,3 +235,66 @@ func TestResponseRedirectChecksMutabilityOnce(t *testing.T) {
 
 	res.Redirect.Temporary(" /next ")
 }
+
+func TestResponseCookiesSetReplacesCookieByName(t *testing.T) {
+	res := NewResponse()
+	res.Cookies.Set(Cookie{Name: "sid", Value: "old", Path: "/old"})
+	res.Cookies.Set(Cookie{Name: "sid", Value: "new", Path: "/new"})
+
+	if got := res.Cookies.Count(); got != 1 {
+		t.Fatalf("cookie count = %d, want 1", got)
+	}
+	got := res.Cookies.Get("sid")
+	if got.Value != "new" || got.Path != "/new" {
+		t.Fatalf("unexpected replacement cookie: %#v", got)
+	}
+	pending := res.Cookies.PendingValues()["sid"]
+	if len(pending) != 1 || pending[0].Value != "new" {
+		t.Fatalf("unexpected pending replacement: %#v", pending)
+	}
+}
+
+func TestResponseCookiesDeleteCreatesSingleTombstone(t *testing.T) {
+	res := NewResponse()
+	res.Cookies.Set(Cookie{Name: "sid", Value: "active", Path: "/private"})
+	res.Cookies.Delete("sid")
+	res.Cookies.Delete("sid")
+
+	if res.Cookies.Has("sid") {
+		t.Fatal("deleted cookie should not remain active")
+	}
+	if got := res.Cookies.Count(); got != 0 {
+		t.Fatalf("active cookie count = %d, want 0", got)
+	}
+	pending := res.Cookies.PendingValues()["sid"]
+	if len(pending) != 1 {
+		t.Fatalf("pending deletion count = %d, want 1: %#v", len(pending), pending)
+	}
+	if pending[0].MaxAge != -1 || pending[0].Path != "/" || pending[0].Expires.Unix() != 0 {
+		t.Fatalf("unexpected deletion tombstone: %#v", pending[0])
+	}
+}
+
+func TestResponseCookiesSetAfterDeleteClearsTombstone(t *testing.T) {
+	res := NewResponse()
+	res.Cookies.Delete("sid")
+	res.Cookies.Set(Cookie{Name: "sid", Value: "restored", Path: "/"})
+
+	pending := res.Cookies.PendingValues()["sid"]
+	if len(pending) != 1 || pending[0].Value != "restored" || pending[0].MaxAge == -1 {
+		t.Fatalf("unexpected pending cookie after restore: %#v", pending)
+	}
+}
+
+func TestResponseCookieNamesRemainCaseSensitive(t *testing.T) {
+	res := NewResponse()
+	res.Cookies.Set(Cookie{Name: "Session", Value: "upper"})
+	res.Cookies.Set(Cookie{Name: "session", Value: "lower"})
+
+	if got := res.Cookies.Count(); got != 2 {
+		t.Fatalf("cookie count = %d, want 2", got)
+	}
+	if res.Cookies.Get("Session").Value != "upper" || res.Cookies.Get("session").Value != "lower" {
+		t.Fatalf("cookie names should remain case-sensitive: %#v", res.Cookies.Values())
+	}
+}
