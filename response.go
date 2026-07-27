@@ -3,7 +3,6 @@ package gox
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -670,7 +669,19 @@ type ResponseImportMap struct {
 	securitySource string
 }
 
-func (m *ResponseImportMap) Nonce() string {
+// ResponseImportMapRuntime contains operations reserved for generated GOX
+// code and the server runtime. Application code should use ResponseImportMap
+// directly through Set, Get, Has, Delete and Len.
+type ResponseImportMapRuntime struct {
+	importMap *ResponseImportMap
+}
+
+// Runtime returns the runtime-only view used by generated GOX code.
+func (m *ResponseImportMap) Runtime() ResponseImportMapRuntime {
+	return ResponseImportMapRuntime{importMap: m}
+}
+
+func (m *ResponseImportMap) nonceValue() string {
 	if m == nil {
 		return ""
 	}
@@ -735,39 +746,6 @@ func (m *ResponseImportMap) Len() int {
 	return len(m.imports)
 }
 
-func (m *ResponseImportMap) Print() []byte {
-	if m == nil || len(m.imports) == 0 {
-		return nil
-	}
-	data, err := json.Marshal(m.imports)
-	if err != nil || len(data) < 2 {
-		return nil
-	}
-	return data[1 : len(data)-1]
-}
-
-func (m *ResponseImportMap) WriteEntries(w Writer, leadingComma bool) {
-	if m == nil || len(m.imports) == 0 || w == nil {
-		return
-	}
-	if leadingComma {
-		w.WriteByte(',')
-	}
-	data := m.Print()
-	w.WriteRawBytes(data)
-}
-
-func (m *ResponseImportMap) Modified() bool {
-	return m != nil && m.modified
-}
-
-func (m *ResponseImportMap) SecuritySource() string {
-	if m == nil || !m.emitted {
-		return ""
-	}
-	return m.securitySource
-}
-
 type responseImportMapPayload struct {
 	Static  [][2]string
 	Dynamic map[string]string
@@ -803,7 +781,9 @@ func (p responseImportMapPayload) MarshalJSON() ([]byte, error) {
 	return buf, nil
 }
 
-func (m *ResponseImportMap) ApplyCSP(staticHash string) {
+// ApplyCSP applies the import-map CSP required by generated GOX code.
+func (r ResponseImportMapRuntime) ApplyCSP(staticHash string) {
+	m := r.importMap
 	if m == nil || m.response == nil {
 		return
 	}
@@ -812,7 +792,7 @@ func (m *ResponseImportMap) ApplyCSP(staticHash string) {
 	}
 	scriptSrc := "'self'"
 	if m.modified {
-		n := m.Nonce()
+		n := m.nonceValue()
 		if n != "" {
 			m.securitySource = "'nonce-" + n + "'"
 		}
@@ -825,10 +805,9 @@ func (m *ResponseImportMap) ApplyCSP(staticHash string) {
 	m.response.Headers.Set("Content-Security-Policy", "default-src 'self'; script-src "+scriptSrc+"; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
 }
 
-// WriteCompiled writes exactly one import map. The static path is a single
-// precompiled write. The dynamic path combines compiled and request entries,
-// generates one nonce, and uses the existing Writer JSON serialization.
-func (m *ResponseImportMap) WriteCompiled(w Writer, staticEntries [][2]string, staticScript []byte, staticHash string) {
+// WriteCompiled writes exactly one import map for generated GOX code.
+func (r ResponseImportMapRuntime) WriteCompiled(w Writer, staticEntries [][2]string, staticScript []byte, staticHash string) {
+	m := r.importMap
 	if m == nil || w == nil {
 		return
 	}
@@ -844,7 +823,7 @@ func (m *ResponseImportMap) WriteCompiled(w Writer, staticEntries [][2]string, s
 	if len(staticEntries) == 0 && len(m.imports) == 0 {
 		return
 	}
-	nonce := m.Nonce()
+	nonce := m.nonceValue()
 	if nonce == "" {
 		return
 	}
@@ -854,6 +833,15 @@ func (m *ResponseImportMap) WriteCompiled(w Writer, staticEntries [][2]string, s
 	w.WriteRawAny(responseImportMapPayload{Static: staticEntries, Dynamic: m.imports})
 	w.WriteRawString(`</script>`)
 	m.emitted = true
+}
+
+// SecuritySource returns the CSP source emitted for the import map.
+func (r ResponseImportMapRuntime) SecuritySource() string {
+	m := r.importMap
+	if m == nil || !m.emitted {
+		return ""
+	}
+	return m.securitySource
 }
 
 func (m *ResponseImportMap) ensureMutable() {

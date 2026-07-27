@@ -75,7 +75,7 @@ func TestResponseCookiesValuesPreservePublicShape(t *testing.T) {
 	}
 }
 
-func TestResponseImportMapSetGetHasDeletePrint(t *testing.T) {
+func TestResponseImportMapSetGetHasDeleteLen(t *testing.T) {
 	res := NewResponse()
 	res.ImportMap.Set("@app/foo", "/foo.js")
 	res.ImportMap.Set("@app/bar", "/bar.js")
@@ -85,9 +85,6 @@ func TestResponseImportMapSetGetHasDeletePrint(t *testing.T) {
 	}
 	if got := res.ImportMap.Get("@app/foo"); got != "/foo.js" {
 		t.Fatalf("unexpected import map value: %q", got)
-	}
-	if got := string(res.ImportMap.Print()); got != `"@app/bar":"/bar.js","@app/foo":"/foo.js"` {
-		t.Fatalf("unexpected import map print: %s", got)
 	}
 
 	res.ImportMap.Delete("@app/foo")
