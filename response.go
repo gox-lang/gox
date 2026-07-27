@@ -438,7 +438,6 @@ const (
 type ResponseCookies struct {
 	response *Response
 	single   map[string]Cookie
-	deleted  map[string]Cookie
 }
 
 func (c *ResponseCookies) Get(key string) Cookie {
@@ -467,9 +466,6 @@ func (c *ResponseCookies) Set(cookie Cookie) {
 	if c.single == nil {
 		c.single = make(map[string]Cookie)
 	}
-	if c.deleted != nil {
-		delete(c.deleted, cookie.Name)
-	}
 	c.single[cookie.Name] = cookie
 }
 
@@ -481,10 +477,6 @@ func (c *ResponseCookies) Delete(key string) {
 	if c.single != nil {
 		delete(c.single, key)
 	}
-	if c.deleted == nil {
-		c.deleted = make(map[string]Cookie)
-	}
-	c.deleted[key] = Cookie{Name: key, Path: "/", MaxAge: -1, Expires: time.Unix(0, 0)}
 }
 
 func (c *ResponseCookies) Has(key string) bool {
@@ -527,20 +519,14 @@ func (c *ResponseCookies) Values() map[string][]Cookie {
 	return out
 }
 
-// PendingValues returns the cookies that must be written to the HTTP response,
-// including deletion tombstones. It is intended for the runtime bridge.
+// PendingValues returns the cookies that must be written to the HTTP response.
+// It is intended for the runtime bridge.
 func (c *ResponseCookies) PendingValues() map[string][]Cookie {
-	if c == nil || (len(c.single) == 0 && len(c.deleted) == 0) {
+	if c == nil || len(c.single) == 0 {
 		return nil
 	}
-	out := make(map[string][]Cookie, len(c.single)+len(c.deleted))
+	out := make(map[string][]Cookie, len(c.single))
 	for key, cookie := range c.single {
-		out[key] = []Cookie{cookie}
-	}
-	for key, cookie := range c.deleted {
-		if key == "" {
-			continue
-		}
 		out[key] = []Cookie{cookie}
 	}
 	return out

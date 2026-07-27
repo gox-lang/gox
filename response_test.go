@@ -254,35 +254,50 @@ func TestResponseCookiesSetReplacesCookieByName(t *testing.T) {
 	}
 }
 
-func TestResponseCookiesDeleteCreatesSingleTombstone(t *testing.T) {
+func TestResponseCookiesSetThenDeleteLeavesNoPendingCookie(t *testing.T) {
 	res := NewResponse()
 	res.Cookies.Set(Cookie{Name: "sid", Value: "active", Path: "/private"})
 	res.Cookies.Delete("sid")
-	res.Cookies.Delete("sid")
 
 	if res.Cookies.Has("sid") {
-		t.Fatal("deleted cookie should not remain active")
+		t.Fatal("deleted cookie should not remain pending")
 	}
 	if got := res.Cookies.Count(); got != 0 {
-		t.Fatalf("active cookie count = %d, want 0", got)
+		t.Fatalf("cookie count = %d, want 0", got)
 	}
-	pending := res.Cookies.PendingValues()["sid"]
-	if len(pending) != 1 {
-		t.Fatalf("pending deletion count = %d, want 1: %#v", len(pending), pending)
-	}
-	if pending[0].MaxAge != -1 || pending[0].Path != "/" || pending[0].Expires.Unix() != 0 {
-		t.Fatalf("unexpected deletion tombstone: %#v", pending[0])
+	if pending := res.Cookies.PendingValues(); pending != nil {
+		t.Fatalf("PendingValues = %#v, want nil", pending)
 	}
 }
 
-func TestResponseCookiesSetAfterDeleteClearsTombstone(t *testing.T) {
+func TestResponseCookiesDeleteMissingCookieIsNoOp(t *testing.T) {
+	res := NewResponse()
+	res.Cookies.Delete("sid")
+
+	if pending := res.Cookies.PendingValues(); pending != nil {
+		t.Fatalf("PendingValues = %#v, want nil", pending)
+	}
+}
+
+func TestResponseCookiesDeleteThenSetLeavesOnePendingCookie(t *testing.T) {
 	res := NewResponse()
 	res.Cookies.Delete("sid")
 	res.Cookies.Set(Cookie{Name: "sid", Value: "restored", Path: "/"})
 
 	pending := res.Cookies.PendingValues()["sid"]
-	if len(pending) != 1 || pending[0].Value != "restored" || pending[0].MaxAge == -1 {
-		t.Fatalf("unexpected pending cookie after restore: %#v", pending)
+	if len(pending) != 1 || pending[0].Value != "restored" {
+		t.Fatalf("unexpected pending cookie: %#v", pending)
+	}
+}
+
+func TestResponseCookiesSetNormalThenExpiredReplacesPendingCookie(t *testing.T) {
+	res := NewResponse()
+	res.Cookies.Set(Cookie{Name: "sid", Value: "active"})
+	res.Cookies.Set(Cookie{Name: "sid", Expired: true})
+
+	pending := res.Cookies.PendingValues()["sid"]
+	if len(pending) != 1 || !pending[0].Expired {
+		t.Fatalf("unexpected pending expired cookie: %#v", pending)
 	}
 }
 
