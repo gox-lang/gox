@@ -96,6 +96,10 @@ func (s *ResponseStatus) SetCode(code int) {
 	s.code = code
 }
 
+func normalizeHeaderKey(key string) string {
+	return strings.ToLower(key)
+}
+
 type ResponseHeaders struct {
 	response    *Response
 	contentType string
@@ -104,14 +108,15 @@ type ResponseHeaders struct {
 }
 
 func (h *ResponseHeaders) Get(key string) string {
-	if h == nil || key == "" {
+	if h == nil {
 		return ""
 	}
-	if strings.EqualFold(key, "Content-Type") {
-		if h.contentType != "" {
-			return h.contentType
-		}
-		key = "Content-Type"
+	key = normalizeHeaderKey(key)
+	if key == "" {
+		return ""
+	}
+	if key == "content-type" && h.contentType != "" {
+		return h.contentType
 	}
 	if h.single != nil {
 		if value, ok := h.single[key]; ok {
@@ -129,14 +134,15 @@ func (h *ResponseHeaders) Get(key string) string {
 }
 
 func (h *ResponseHeaders) GetAll(key string) []string {
-	if h == nil || key == "" {
+	if h == nil {
 		return nil
 	}
-	if strings.EqualFold(key, "Content-Type") {
-		if h.contentType != "" {
-			return []string{h.contentType}
-		}
-		key = "Content-Type"
+	key = normalizeHeaderKey(key)
+	if key == "" {
+		return nil
+	}
+	if key == "content-type" && h.contentType != "" {
+		return []string{h.contentType}
 	}
 	if h.multi != nil {
 		if values := h.multi[key]; len(values) > 0 {
@@ -152,18 +158,20 @@ func (h *ResponseHeaders) GetAll(key string) []string {
 }
 
 func (h *ResponseHeaders) Set(key string, value string) {
-	if h == nil || key == "" {
+	if h == nil {
+		return
+	}
+	key = normalizeHeaderKey(key)
+	if key == "" {
 		return
 	}
 	h.ensureMutable()
-	if strings.EqualFold(key, "Content-Type") {
+	if key == "content-type" {
 		h.contentType = value
 		if h.single != nil {
-			delete(h.single, "Content-Type")
 			delete(h.single, key)
 		}
 		if h.multi != nil {
-			delete(h.multi, "Content-Type")
 			delete(h.multi, key)
 		}
 		return
@@ -178,16 +186,19 @@ func (h *ResponseHeaders) Set(key string, value string) {
 }
 
 func (h *ResponseHeaders) Append(key string, value string) {
-	if h == nil || key == "" {
+	if h == nil {
+		return
+	}
+	key = normalizeHeaderKey(key)
+	if key == "" {
 		return
 	}
 	h.ensureMutable()
-	if strings.EqualFold(key, "Content-Type") {
+	if key == "content-type" {
 		if h.contentType == "" {
 			h.contentType = value
 			return
 		}
-		key = "Content-Type"
 		if h.multi == nil {
 			h.multi = make(map[string][]string)
 		}
@@ -209,13 +220,16 @@ func (h *ResponseHeaders) Append(key string, value string) {
 }
 
 func (h *ResponseHeaders) Delete(key string) {
-	if h == nil || key == "" {
+	if h == nil {
+		return
+	}
+	key = normalizeHeaderKey(key)
+	if key == "" {
 		return
 	}
 	h.ensureMutable()
-	if strings.EqualFold(key, "Content-Type") {
+	if key == "content-type" {
 		h.contentType = ""
-		key = "Content-Type"
 	}
 	if h.single != nil {
 		delete(h.single, key)
@@ -226,6 +240,7 @@ func (h *ResponseHeaders) Delete(key string) {
 }
 
 func (h *ResponseHeaders) Contains(key string, value string) bool {
+	key = normalizeHeaderKey(key)
 	if h == nil || key == "" || value == "" {
 		return false
 	}
@@ -248,14 +263,15 @@ func containsFold(s string, substr string) bool {
 }
 
 func (h *ResponseHeaders) Has(key string) bool {
-	if h == nil || key == "" {
+	if h == nil {
 		return false
 	}
-	if strings.EqualFold(key, "Content-Type") {
-		if h.contentType != "" {
-			return true
-		}
-		key = "Content-Type"
+	key = normalizeHeaderKey(key)
+	if key == "" {
+		return false
+	}
+	if key == "content-type" && h.contentType != "" {
+		return true
 	}
 	if h.single != nil {
 		if _, ok := h.single[key]; ok {
@@ -300,8 +316,8 @@ func (h *ResponseHeaders) Keys() []string {
 	seen := make(map[string]struct{}, h.Count())
 	keys := make([]string, 0, h.Count())
 	if h.contentType != "" {
-		seen["Content-Type"] = struct{}{}
-		keys = append(keys, "Content-Type")
+		seen["content-type"] = struct{}{}
+		keys = append(keys, "content-type")
 	}
 	for key := range h.single {
 		seen[key] = struct{}{}
@@ -326,7 +342,7 @@ func (h *ResponseHeaders) Range(fn func(key string, value string, first bool) bo
 	if h == nil || fn == nil {
 		return
 	}
-	if h.contentType != "" && !fn("Content-Type", h.contentType, true) {
+	if h.contentType != "" && !fn("content-type", h.contentType, true) {
 		return
 	}
 	for key, value := range h.single {
@@ -360,7 +376,7 @@ func (h *ResponseHeaders) Values() map[string][]string {
 	}
 	out := make(map[string][]string, h.Count())
 	if h.contentType != "" {
-		out["Content-Type"] = []string{h.contentType}
+		out["content-type"] = []string{h.contentType}
 	}
 	for key, value := range h.single {
 		out[key] = []string{value}

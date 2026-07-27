@@ -114,10 +114,82 @@ func TestResponseHeadersRangeWithoutChangingPublicValues(t *testing.T) {
 		return true
 	})
 
-	if values := got["Content-Type"]; len(values) != 1 || values[0] != "text/html" {
+	if values := got["content-type"]; len(values) != 1 || values[0] != "text/html" {
 		t.Fatalf("unexpected Content-Type values: %#v", values)
 	}
-	if values := got["Vary"]; len(values) != 2 || values[0] != "Accept-Encoding" || values[1] != "Origin" {
+	if values := got["vary"]; len(values) != 2 || values[0] != "Accept-Encoding" || values[1] != "Origin" {
 		t.Fatalf("unexpected Vary values: %#v", values)
+	}
+}
+
+func TestResponseHeadersNormalizeKeysAcrossOperations(t *testing.T) {
+	res := NewResponse()
+	res.Headers.Set("X-Request-ID", "first")
+
+	if got := res.Headers.Get("x-request-id"); got != "first" {
+		t.Fatalf("Get with lowercase key = %q, want first", got)
+	}
+	if !res.Headers.Has("X-REQUEST-ID") {
+		t.Fatal("Has should be case-insensitive")
+	}
+	if _, ok := res.Headers.single["x-request-id"]; !ok {
+		t.Fatalf("header key was not normalized internally: %#v", res.Headers.single)
+	}
+	if _, ok := res.Headers.single["X-Request-ID"]; ok {
+		t.Fatalf("original header casing should not remain internally: %#v", res.Headers.single)
+	}
+
+	res.Headers.Append("x-REQUEST-id", "second")
+	got := res.Headers.GetAll("X-Request-Id")
+	if len(got) != 2 || got[0] != "first" || got[1] != "second" {
+		t.Fatalf("GetAll after mixed-case Append = %#v", got)
+	}
+	if res.Headers.Count() != 1 {
+		t.Fatalf("Count after mixed-case operations = %d, want 1", res.Headers.Count())
+	}
+
+	res.Headers.Delete("X-REQUEST-ID")
+	if res.Headers.Has("x-request-id") {
+		t.Fatal("Delete should be case-insensitive")
+	}
+}
+
+func TestResponseHeadersNormalizeContentTypeKey(t *testing.T) {
+	res := NewResponse()
+	res.Headers.Set("CONTENT-TYPE", "text/plain")
+	res.Headers.Append("content-Type", "application/json")
+
+	got := res.Headers.GetAll("Content-Type")
+	if len(got) != 2 || got[0] != "text/plain" || got[1] != "application/json" {
+		t.Fatalf("mixed-case Content-Type values = %#v", got)
+	}
+	keys := res.Headers.Keys()
+	if len(keys) != 1 || keys[0] != "content-type" {
+		t.Fatalf("normalized Content-Type keys = %#v", keys)
+	}
+
+	res.Headers.Delete("Content-TYPE")
+	if res.Headers.Has("content-type") {
+		t.Fatal("Content-Type should be deleted regardless of casing")
+	}
+}
+
+func TestResponseHeadersValuesAndRangeExposeNormalizedKeys(t *testing.T) {
+	res := NewResponse()
+	res.Headers.Set("X-Custom-Header", "value")
+	res.Headers.Set("Content-Type", "text/plain")
+
+	values := res.Headers.Values()
+	if values["x-custom-header"][0] != "value" || values["content-type"][0] != "text/plain" {
+		t.Fatalf("Values did not expose normalized keys: %#v", values)
+	}
+
+	seen := make(map[string]bool)
+	res.Headers.Range(func(key string, value string, first bool) bool {
+		seen[key] = true
+		return true
+	})
+	if !seen["x-custom-header"] || !seen["content-type"] {
+		t.Fatalf("Range did not expose normalized keys: %#v", seen)
 	}
 }
