@@ -1,0 +1,22 @@
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build
+/build/
+/dist/
+
+# Test output
+*.test
+*.out
+
+# Coverage
+coverage.out
+coverage.html
