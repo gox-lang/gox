@@ -3,6 +3,8 @@ package gox
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"net/textproto"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,7 +68,7 @@ func ResetRuntimeResponse(response *Response) {
 		return
 	}
 	*response = Response{}
-	response.Status = ResponseStatus{response: response, code: 200}
+	response.Status = ResponseStatus{response: response, code: 200, message: "OK"}
 	response.Headers = ResponseHeaders{response: response}
 	response.Cookies = ResponseCookies{response: response}
 	response.Redirect = RedirectResponse{response: response}
@@ -74,8 +76,10 @@ func ResetRuntimeResponse(response *Response) {
 }
 
 type ResponseStatus struct {
-	response *Response
-	code     int
+	response      *Response
+	code          int
+	message       string
+	messageCustom bool
 }
 
 func (s *ResponseStatus) GetCode() int {
@@ -93,17 +97,38 @@ func (s *ResponseStatus) SetCode(code int) {
 		s.response.ensureMutable()
 	}
 	s.code = code
+	s.message = defaultStatusMessage(code)
+	s.messageCustom = false
+}
+
+func (s *ResponseStatus) GetMessage() string {
+	if s == nil {
+		return "OK"
+	}
+	if s.message != "" {
+		return s.message
+	}
+	return defaultStatusMessage(s.GetCode())
+}
+
+func (s *ResponseStatus) SetMessage(message string) {
+	if s == nil {
+		return
+	}
+	if s.response != nil {
+		s.response.ensureMutable()
+	}
+	s.message = message
+	s.messageCustom = true
 }
 
 func normalizeHeaderKey(key string) string {
-	return strings.ToLower(key)
+	return textproto.CanonicalMIMEHeaderKey(key)
 }
 
 type ResponseHeaders struct {
-	response    *Response
-	contentType string
-	single      map[string]string
-	multi       map[string][]string
+	response *Response
+	headers  map[string][]string
 }
 
 func (h *ResponseHeaders) Get(key string) string {
@@ -114,18 +139,7 @@ func (h *ResponseHeaders) Get(key string) string {
 	if key == "" {
 		return ""
 	}
-	if key == "content-type" && h.contentType != "" {
-		return h.contentType
-	}
-	if h.single != nil {
-		if value, ok := h.single[key]; ok {
-			return value
-		}
-	}
-	if h.multi == nil {
-		return ""
-	}
-	values := h.multi[key]
+	values := h.headers[key]
 	if len(values) == 0 {
 		return ""
 	}
@@ -140,20 +154,11 @@ func (h *ResponseHeaders) GetAll(key string) []string {
 	if key == "" {
 		return nil
 	}
-	if key == "content-type" && h.contentType != "" {
-		return []string{h.contentType}
+	values := h.headers[key]
+	if len(values) == 0 {
+		return nil
 	}
-	if h.multi != nil {
-		if values := h.multi[key]; len(values) > 0 {
-			return cloneSlice(values)
-		}
-	}
-	if h.single != nil {
-		if value, ok := h.single[key]; ok {
-			return []string{value}
-		}
-	}
-	return nil
+	return cloneSlice(values)
 }
 
 func (h *ResponseHeaders) Set(key string, value string) {
@@ -165,23 +170,10 @@ func (h *ResponseHeaders) Set(key string, value string) {
 		return
 	}
 	h.ensureMutable()
-	if key == "content-type" {
-		h.contentType = value
-		if h.single != nil {
-			delete(h.single, key)
-		}
-		if h.multi != nil {
-			delete(h.multi, key)
-		}
-		return
+	if h.headers == nil {
+		h.headers = make(map[string][]string)
 	}
-	if h.single == nil {
-		h.single = make(map[string]string)
-	}
-	h.single[key] = value
-	if h.multi != nil {
-		delete(h.multi, key)
-	}
+	h.headers[key] = []string{value}
 }
 
 func (h *ResponseHeaders) Append(key string, value string) {
@@ -193,29 +185,10 @@ func (h *ResponseHeaders) Append(key string, value string) {
 		return
 	}
 	h.ensureMutable()
-	if key == "content-type" {
-		if h.contentType == "" {
-			h.contentType = value
-			return
-		}
-		if h.multi == nil {
-			h.multi = make(map[string][]string)
-		}
-		h.multi[key] = append(h.multi[key], h.contentType, value)
-		h.contentType = ""
-		return
+	if h.headers == nil {
+		h.headers = make(map[string][]string)
 	}
-	if h.multi == nil {
-		h.multi = make(map[string][]string)
-	}
-	if h.single != nil {
-		if current, ok := h.single[key]; ok {
-			h.multi[key] = []string{current, value}
-			delete(h.single, key)
-			return
-		}
-	}
-	h.multi[key] = append(h.multi[key], value)
+	h.headers[key] = append(h.headers[key], value)
 }
 
 func (h *ResponseHeaders) Delete(key string) {
@@ -227,15 +200,7 @@ func (h *ResponseHeaders) Delete(key string) {
 		return
 	}
 	h.ensureMutable()
-	if key == "content-type" {
-		h.contentType = ""
-	}
-	if h.single != nil {
-		delete(h.single, key)
-	}
-	if h.multi != nil {
-		delete(h.multi, key)
-	}
+	delete(h.headers, key)
 }
 
 func (h *ResponseHeaders) Contains(key string, value string) bool {
@@ -274,18 +239,7 @@ func (h *ResponseHeaders) Has(key string) bool {
 	if key == "" {
 		return false
 	}
-	if key == "content-type" && h.contentType != "" {
-		return true
-	}
-	if h.single != nil {
-		if _, ok := h.single[key]; ok {
-			return true
-		}
-	}
-	if h.multi == nil {
-		return false
-	}
-	values, ok := h.multi[key]
+	values, ok := h.headers[key]
 	return ok && len(values) > 0
 }
 
@@ -295,20 +249,11 @@ func (h *ResponseHeaders) Count() int {
 	if h == nil {
 		return 0
 	}
-	count := len(h.single)
-	if h.contentType != "" {
-		count++
-	}
-	for key, values := range h.multi {
-		if len(values) == 0 {
-			continue
+	count := 0
+	for _, values := range h.headers {
+		if len(values) > 0 {
+			count++
 		}
-		if h.single != nil {
-			if _, exists := h.single[key]; exists {
-				continue
-			}
-		}
-		count++
 	}
 	return count
 }
@@ -317,21 +262,9 @@ func (h *ResponseHeaders) Keys() []string {
 	if h == nil || h.Count() == 0 {
 		return nil
 	}
-	seen := make(map[string]struct{}, h.Count())
 	keys := make([]string, 0, h.Count())
-	if h.contentType != "" {
-		seen["content-type"] = struct{}{}
-		keys = append(keys, "content-type")
-	}
-	for key := range h.single {
-		seen[key] = struct{}{}
-		keys = append(keys, key)
-	}
-	for key, values := range h.multi {
-		if len(values) == 0 {
-			continue
-		}
-		if _, ok := seen[key]; ok {
+	for key, values := range h.headers {
+		if key == "" || len(values) == 0 {
 			continue
 		}
 		keys = append(keys, key)
@@ -346,25 +279,9 @@ func (h *ResponseHeaders) Range(fn func(key string, value string, first bool) bo
 	if h == nil || fn == nil {
 		return
 	}
-	if h.contentType != "" && !fn("content-type", h.contentType, true) {
-		return
-	}
-	for key, value := range h.single {
-		if key == "" {
-			continue
-		}
-		if !fn(key, value, true) {
-			return
-		}
-	}
-	for key, values := range h.multi {
+	for key, values := range h.headers {
 		if key == "" || len(values) == 0 {
 			continue
-		}
-		if h.single != nil {
-			if _, exists := h.single[key]; exists {
-				continue
-			}
 		}
 		for i, value := range values {
 			if !fn(key, value, i == 0) {
@@ -379,17 +296,8 @@ func (h *ResponseHeaders) Values() map[string][]string {
 		return nil
 	}
 	out := make(map[string][]string, h.Count())
-	if h.contentType != "" {
-		out["content-type"] = []string{h.contentType}
-	}
-	for key, value := range h.single {
-		out[key] = []string{value}
-	}
-	for key, values := range h.multi {
-		if len(values) == 0 {
-			continue
-		}
-		if _, exists := out[key]; exists {
+	for key, values := range h.headers {
+		if key == "" || len(values) == 0 {
 			continue
 		}
 		out[key] = cloneSlice(values)
@@ -422,7 +330,6 @@ type Cookie struct {
 	HttpOnly bool
 	Secure   bool
 	SameSite SameSite
-	Expired  bool
 }
 
 type SameSite int
@@ -437,6 +344,7 @@ const (
 type ResponseCookies struct {
 	response *Response
 	single   map[string]Cookie
+	deleted  map[string]Cookie
 }
 
 func (c *ResponseCookies) Get(key string) Cookie {
@@ -465,6 +373,9 @@ func (c *ResponseCookies) Set(cookie Cookie) {
 	if c.single == nil {
 		c.single = make(map[string]Cookie)
 	}
+	if c.deleted != nil {
+		delete(c.deleted, cookie.Name)
+	}
 	c.single[cookie.Name] = cookie
 }
 
@@ -476,6 +387,10 @@ func (c *ResponseCookies) Delete(key string) {
 	if c.single != nil {
 		delete(c.single, key)
 	}
+	if c.deleted == nil {
+		c.deleted = make(map[string]Cookie)
+	}
+	c.deleted[key] = Cookie{Name: key, Path: "/", MaxAge: -1, Expires: time.Unix(0, 0)}
 }
 
 func (c *ResponseCookies) Has(key string) bool {
@@ -518,14 +433,20 @@ func (c *ResponseCookies) Values() map[string][]Cookie {
 	return out
 }
 
-// PendingValues returns the cookies that must be written to the HTTP response.
-// It is intended for the runtime bridge.
+// PendingValues returns the cookies that must be written to the HTTP response,
+// including deletion tombstones. It is intended for the runtime bridge.
 func (c *ResponseCookies) PendingValues() map[string][]Cookie {
-	if c == nil || len(c.single) == 0 {
+	if c == nil || (len(c.single) == 0 && len(c.deleted) == 0) {
 		return nil
 	}
-	out := make(map[string][]Cookie, len(c.single))
+	out := make(map[string][]Cookie, len(c.single)+len(c.deleted))
 	for key, cookie := range c.single {
+		out[key] = []Cookie{cookie}
+	}
+	for key, cookie := range c.deleted {
+		if key == "" {
+			continue
+		}
 		out[key] = []Cookie{cookie}
 	}
 	return out
@@ -574,6 +495,7 @@ func (r *Response) redirect(status int, location string) {
 	if r == nil {
 		return
 	}
+	r.ensureMutable()
 	location = strings.TrimSpace(location)
 	file, line := responseFlowCallsite()
 	if location == "" {
@@ -587,8 +509,8 @@ func (r *Response) redirect(status int, location string) {
 		})
 	}
 
-	r.Headers.Set("Location", location)
 	r.Status.setCodeInternal(status)
+	r.Headers.Set("Location", location)
 	panic(FlowControl{
 		Kind:       FlowRedirect,
 		StatusCode: status,
@@ -619,6 +541,8 @@ func (s *ResponseStatus) setCodeInternal(code int) {
 		return
 	}
 	s.code = code
+	s.message = defaultStatusMessage(code)
+	s.messageCustom = false
 }
 
 func (r *Response) ensureMutable() {
@@ -637,6 +561,137 @@ func (r *Response) ensureMutable() {
 		File:       file,
 		Line:       line,
 	})
+}
+
+func defaultStatusMessage(code int) string {
+	switch code {
+	case 100:
+		return "Continue"
+	case 101:
+		return "Switching Protocols"
+	case 102:
+		return "Processing"
+	case 103:
+		return "Early Hints"
+	case 200:
+		return "OK"
+	case 201:
+		return "Created"
+	case 202:
+		return "Accepted"
+	case 203:
+		return "Non-Authoritative Information"
+	case 204:
+		return "No Content"
+	case 205:
+		return "Reset Content"
+	case 206:
+		return "Partial Content"
+	case 207:
+		return "Multi-Status"
+	case 208:
+		return "Already Reported"
+	case 226:
+		return "IM Used"
+	case 300:
+		return "Multiple Choices"
+	case 301:
+		return "Moved Permanently"
+	case 302:
+		return "Found"
+	case 303:
+		return "See Other"
+	case 304:
+		return "Not Modified"
+	case 305:
+		return "Use Proxy"
+	case 307:
+		return "Temporary Redirect"
+	case 308:
+		return "Permanent Redirect"
+	case 400:
+		return "Bad Request"
+	case 401:
+		return "Unauthorized"
+	case 402:
+		return "Payment Required"
+	case 403:
+		return "Forbidden"
+	case 404:
+		return "Not Found"
+	case 405:
+		return "Method Not Allowed"
+	case 406:
+		return "Not Acceptable"
+	case 407:
+		return "Proxy Authentication Required"
+	case 408:
+		return "Request Timeout"
+	case 409:
+		return "Conflict"
+	case 410:
+		return "Gone"
+	case 411:
+		return "Length Required"
+	case 412:
+		return "Precondition Failed"
+	case 413:
+		return "Content Too Large"
+	case 414:
+		return "URI Too Long"
+	case 415:
+		return "Unsupported Media Type"
+	case 416:
+		return "Range Not Satisfiable"
+	case 417:
+		return "Expectation Failed"
+	case 418:
+		return "I'm a teapot"
+	case 421:
+		return "Misdirected Request"
+	case 422:
+		return "Unprocessable Content"
+	case 423:
+		return "Locked"
+	case 424:
+		return "Failed Dependency"
+	case 425:
+		return "Too Early"
+	case 426:
+		return "Upgrade Required"
+	case 428:
+		return "Precondition Required"
+	case 429:
+		return "Too Many Requests"
+	case 431:
+		return "Request Header Fields Too Large"
+	case 451:
+		return "Unavailable For Legal Reasons"
+	case 500:
+		return "Internal Server Error"
+	case 501:
+		return "Not Implemented"
+	case 502:
+		return "Bad Gateway"
+	case 503:
+		return "Service Unavailable"
+	case 504:
+		return "Gateway Timeout"
+	case 505:
+		return "HTTP Version Not Supported"
+	case 506:
+		return "Variant Also Negotiates"
+	case 507:
+		return "Insufficient Storage"
+	case 508:
+		return "Loop Detected"
+	case 510:
+		return "Not Extended"
+	case 511:
+		return "Network Authentication Required"
+	default:
+		return ""
+	}
 }
 
 var runtimeFlowCallsiteResolver func() (file string, line int)
@@ -669,19 +724,7 @@ type ResponseImportMap struct {
 	securitySource string
 }
 
-// ResponseImportMapRuntime contains operations reserved for generated GOX
-// code and the server runtime. Application code should use ResponseImportMap
-// directly through Set, Get, Has, Delete and Len.
-type ResponseImportMapRuntime struct {
-	importMap *ResponseImportMap
-}
-
-// Runtime returns the runtime-only view used by generated GOX code.
-func (m *ResponseImportMap) Runtime() ResponseImportMapRuntime {
-	return ResponseImportMapRuntime{importMap: m}
-}
-
-func (m *ResponseImportMap) nonceValue() string {
+func (m *ResponseImportMap) Nonce() string {
 	if m == nil {
 		return ""
 	}
@@ -746,6 +789,39 @@ func (m *ResponseImportMap) Len() int {
 	return len(m.imports)
 }
 
+func (m *ResponseImportMap) Print() []byte {
+	if m == nil || len(m.imports) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(m.imports)
+	if err != nil || len(data) < 2 {
+		return nil
+	}
+	return data[1 : len(data)-1]
+}
+
+func (m *ResponseImportMap) WriteEntries(w Writer, leadingComma bool) {
+	if m == nil || len(m.imports) == 0 || w == nil {
+		return
+	}
+	if leadingComma {
+		w.WriteByte(',')
+	}
+	data := m.Print()
+	w.WriteRawBytes(data)
+}
+
+func (m *ResponseImportMap) Modified() bool {
+	return m != nil && m.modified
+}
+
+func (m *ResponseImportMap) SecuritySource() string {
+	if m == nil || !m.emitted {
+		return ""
+	}
+	return m.securitySource
+}
+
 type responseImportMapPayload struct {
 	Static  [][2]string
 	Dynamic map[string]string
@@ -781,9 +857,7 @@ func (p responseImportMapPayload) MarshalJSON() ([]byte, error) {
 	return buf, nil
 }
 
-// ApplyCSP applies the import-map CSP required by generated GOX code.
-func (r ResponseImportMapRuntime) ApplyCSP(staticHash string) {
-	m := r.importMap
+func (m *ResponseImportMap) ApplyCSP(staticHash string) {
 	if m == nil || m.response == nil {
 		return
 	}
@@ -792,7 +866,7 @@ func (r ResponseImportMapRuntime) ApplyCSP(staticHash string) {
 	}
 	scriptSrc := "'self'"
 	if m.modified {
-		n := m.nonceValue()
+		n := m.Nonce()
 		if n != "" {
 			m.securitySource = "'nonce-" + n + "'"
 		}
@@ -805,9 +879,10 @@ func (r ResponseImportMapRuntime) ApplyCSP(staticHash string) {
 	m.response.Headers.Set("Content-Security-Policy", "default-src 'self'; script-src "+scriptSrc+"; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
 }
 
-// WriteCompiled writes exactly one import map for generated GOX code.
-func (r ResponseImportMapRuntime) WriteCompiled(w Writer, staticEntries [][2]string, staticScript []byte, staticHash string) {
-	m := r.importMap
+// WriteCompiled writes exactly one import map. The static path is a single
+// precompiled write. The dynamic path combines compiled and request entries,
+// generates one nonce, and uses the existing Writer JSON serialization.
+func (m *ResponseImportMap) WriteCompiled(w Writer, staticEntries [][2]string, staticScript []byte, staticHash string) {
 	if m == nil || w == nil {
 		return
 	}
@@ -823,7 +898,7 @@ func (r ResponseImportMapRuntime) WriteCompiled(w Writer, staticEntries [][2]str
 	if len(staticEntries) == 0 && len(m.imports) == 0 {
 		return
 	}
-	nonce := m.nonceValue()
+	nonce := m.Nonce()
 	if nonce == "" {
 		return
 	}
@@ -833,15 +908,6 @@ func (r ResponseImportMapRuntime) WriteCompiled(w Writer, staticEntries [][2]str
 	w.WriteRawAny(responseImportMapPayload{Static: staticEntries, Dynamic: m.imports})
 	w.WriteRawString(`</script>`)
 	m.emitted = true
-}
-
-// SecuritySource returns the CSP source emitted for the import map.
-func (r ResponseImportMapRuntime) SecuritySource() string {
-	m := r.importMap
-	if m == nil || !m.emitted {
-		return ""
-	}
-	return m.securitySource
 }
 
 func (m *ResponseImportMap) ensureMutable() {
