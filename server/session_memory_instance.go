@@ -214,12 +214,8 @@ func (i *memorySessionInstance) GetTTL() time.Duration {
 	}
 
 	rec.mu.RLock()
-	ttl := time.Until(rec.expireAt)
+	ttl := rec.ttl
 	rec.mu.RUnlock()
-
-	if ttl < 0 {
-		return 0
-	}
 
 	return ttl
 }

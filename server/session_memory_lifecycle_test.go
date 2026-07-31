@@ -25,8 +25,48 @@ func TestMemorySessionTouchRenewsActiveSession(t *testing.T) {
 	if err := runtime.TouchSession(context.Background(), instance.ID(), 2*time.Hour); err != nil {
 		t.Fatalf("TouchSession() error = %v", err)
 	}
-	if ttl := instance.GetTTL(); ttl < time.Hour+59*time.Minute || ttl > 2*time.Hour {
-		t.Fatalf("renewed TTL = %s, want approximately 2h", ttl)
+	if ttl := instance.GetTTL(); ttl != 2*time.Hour {
+		t.Fatalf("configured TTL = %s, want 2h", ttl)
+	}
+}
+
+func TestMemorySessionOpenPreservesConfiguredTTL(t *testing.T) {
+	runtime := newMemorySessionRuntime(func() memorySessionOptions {
+		return memorySessionOptions{StorageName: "memory-test", TTL: time.Hour}
+	})
+	t.Cleanup(func() { _ = runtime.Close() })
+
+	now := time.Now()
+	instance, err := runtime.CreateSession(context.Background(), &SessionMeta{
+		ID: "custom-ttl", Token: "token", TTL: 15 * time.Minute,
+		CreatedAt: now, UpdatedAt: now, ExpireAt: now.Add(15 * time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := runtime.OpenSession(context.Background(), SessionOpenRequest{
+		ID: instance.ID(), Token: instance.Token(), TTL: time.Hour, Now: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Opened() {
+		t.Fatalf("OpenSession() status = %v, want SessionOpenOpened", result.Status)
+	}
+	if ttl := result.Instance.GetTTL(); ttl != 15*time.Minute {
+		t.Fatalf("configured TTL = %s, want 15m", ttl)
+	}
+
+	rec, ok := runtime.record(instance.ID())
+	if !ok {
+		t.Fatal("session record is missing")
+	}
+	rec.mu.RLock()
+	expireAt := rec.expireAt
+	rec.mu.RUnlock()
+	if want := now.Add(16 * time.Minute); !expireAt.Equal(want) {
+		t.Fatalf("ExpireAt = %s, want %s", expireAt, want)
 	}
 }
 

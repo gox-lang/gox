@@ -122,11 +122,6 @@ func (a *memorySessionRuntime) OpenSession(ctx context.Context, request SessionO
 		now = time.Now()
 	}
 
-	ttl := normalizeTTL(request.TTL)
-	if ttl <= 0 {
-		ttl = a.options().TTL
-	}
-
 	rec, ok := a.record(request.ID)
 	if !ok {
 		return SessionOpenResult{Status: SessionOpenMissing}, nil
@@ -149,6 +144,14 @@ func (a *memorySessionRuntime) OpenSession(ctx context.Context, request SessionO
 		status = SessionOpenInvalidToken
 
 	default:
+		ttl := rec.ttl
+		if ttl <= 0 {
+			ttl = request.TTL
+		}
+		if ttl <= 0 {
+			ttl = a.options().TTL
+		}
+		ttl = normalizeTTL(ttl)
 		rec.ttl = ttl
 		rec.expireAt = now.Add(ttl)
 		rec.updatedAt = now
