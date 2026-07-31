@@ -43,13 +43,13 @@ func TestWritePageFileWritesMetadataAndContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := response.Headers.Get("Content-Type"); got != "application/pdf" {
+	if got := responseHeaderValue(&response.Headers, "Content-Type"); got != "application/pdf" {
 		t.Fatalf("Content-Type = %q", got)
 	}
-	if got := response.Headers.Get("Content-Disposition"); got != `inline; filename=report.pdf` {
+	if got := responseHeaderValue(&response.Headers, "Content-Disposition"); got != `inline; filename=report.pdf` {
 		t.Fatalf("Content-Disposition = %q", got)
 	}
-	if got := response.Headers.Get("Content-Length"); got != "8" {
+	if got := responseHeaderValue(&response.Headers, "Content-Length"); got != "8" {
 		t.Fatalf("Content-Length = %q", got)
 	}
 	if got := writer.body.String(); got != "pdf-data" {
@@ -92,7 +92,7 @@ func TestWritePageFilePreservesExplicitDisposition(t *testing.T) {
 	if err := WritePageFile(ctx, file); err != nil {
 		t.Fatal(err)
 	}
-	if got := response.Headers.Get("Content-Disposition"); got != `attachment; filename="download.pdf"` {
+	if got := responseHeaderValue(&response.Headers, "Content-Disposition"); got != `attachment; filename="download.pdf"` {
 		t.Fatalf("Content-Disposition=%q", got)
 	}
 }

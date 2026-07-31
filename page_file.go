@@ -28,10 +28,10 @@ func WritePageFile(ctx *Context, file File) error {
 		return fmt.Errorf("gox file: invalid response filename %q", info.Name)
 	}
 
-	if ctx.Response.Headers.Get("Content-Type") == "" {
+	if _, ok := ctx.Response.Headers.Get("Content-Type"); !ok {
 		ctx.Response.Headers.Set("Content-Type", info.ContentType)
 	}
-	if ctx.Response.Headers.Get("Content-Disposition") == "" {
+	if _, ok := ctx.Response.Headers.Get("Content-Disposition"); !ok {
 		ctx.Response.Headers.Set("Content-Disposition", disposition)
 	}
 	ctx.Response.Headers.Set("Content-Length", strconv.FormatInt(info.Size, 10))

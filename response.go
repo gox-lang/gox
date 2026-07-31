@@ -3,8 +3,6 @@ package gox
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
-	"net/textproto"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,7 +66,7 @@ func ResetRuntimeResponse(response *Response) {
 		return
 	}
 	*response = Response{}
-	response.Status = ResponseStatus{response: response, code: 200, message: "OK"}
+	response.Status = ResponseStatus{response: response, code: 200}
 	response.Headers = ResponseHeaders{response: response}
 	response.Cookies = ResponseCookies{response: response}
 	response.Redirect = RedirectResponse{response: response}
@@ -76,10 +74,8 @@ func ResetRuntimeResponse(response *Response) {
 }
 
 type ResponseStatus struct {
-	response      *Response
-	code          int
-	message       string
-	messageCustom bool
+	response *Response
+	code     int
 }
 
 func (s *ResponseStatus) GetCode() int {
@@ -97,33 +93,10 @@ func (s *ResponseStatus) SetCode(code int) {
 		s.response.ensureMutable()
 	}
 	s.code = code
-	s.message = defaultStatusMessage(code)
-	s.messageCustom = false
-}
-
-func (s *ResponseStatus) GetMessage() string {
-	if s == nil {
-		return "OK"
-	}
-	if s.message != "" {
-		return s.message
-	}
-	return defaultStatusMessage(s.GetCode())
-}
-
-func (s *ResponseStatus) SetMessage(message string) {
-	if s == nil {
-		return
-	}
-	if s.response != nil {
-		s.response.ensureMutable()
-	}
-	s.message = message
-	s.messageCustom = true
 }
 
 func normalizeHeaderKey(key string) string {
-	return textproto.CanonicalMIMEHeaderKey(key)
+	return strings.ToLower(key)
 }
 
 type ResponseHeaders struct {
@@ -131,34 +104,34 @@ type ResponseHeaders struct {
 	headers  map[string][]string
 }
 
-func (h *ResponseHeaders) Get(key string) string {
+func (h *ResponseHeaders) Get(key string) (string, bool) {
 	if h == nil {
-		return ""
+		return "", false
 	}
 	key = normalizeHeaderKey(key)
 	if key == "" {
-		return ""
+		return "", false
 	}
-	values := h.headers[key]
-	if len(values) == 0 {
-		return ""
+	values, ok := h.headers[key]
+	if !ok || len(values) == 0 {
+		return "", false
 	}
-	return values[0]
+	return values[0], true
 }
 
-func (h *ResponseHeaders) GetAll(key string) []string {
+func (h *ResponseHeaders) GetAll(key string) ([]string, bool) {
 	if h == nil {
-		return nil
+		return nil, false
 	}
 	key = normalizeHeaderKey(key)
 	if key == "" {
-		return nil
+		return nil, false
 	}
-	values := h.headers[key]
-	if len(values) == 0 {
-		return nil
+	values, ok := h.headers[key]
+	if !ok || len(values) == 0 {
+		return nil, false
 	}
-	return cloneSlice(values)
+	return cloneSlice(values), true
 }
 
 func (h *ResponseHeaders) Set(key string, value string) {
@@ -208,7 +181,11 @@ func (h *ResponseHeaders) Contains(key string, value string) bool {
 	if h == nil || key == "" || value == "" {
 		return false
 	}
-	for _, current := range h.GetAll(key) {
+	values, ok := h.GetAll(key)
+	if !ok {
+		return false
+	}
+	for _, current := range values {
 		if containsFold(current, value) {
 			return true
 		}
@@ -309,7 +286,8 @@ func (h *ResponseHeaders) Entries() []Entry[string] {
 	keys := h.Keys()
 	entries := make([]Entry[string], 0, len(keys))
 	for _, key := range keys {
-		entries = append(entries, Entry[string]{Key: key, Value: h.GetAll(key)})
+		values, _ := h.GetAll(key)
+		entries = append(entries, Entry[string]{Key: key, Value: values})
 	}
 	return entries
 }
@@ -330,6 +308,7 @@ type Cookie struct {
 	HttpOnly bool
 	Secure   bool
 	SameSite SameSite
+	Expired  bool
 }
 
 type SameSite int
@@ -343,26 +322,29 @@ const (
 
 type ResponseCookies struct {
 	response *Response
-	single   map[string]Cookie
-	deleted  map[string]Cookie
+	cookies  map[string][]Cookie
 }
 
-func (c *ResponseCookies) Get(key string) Cookie {
-	if c == nil || key == "" || c.single == nil {
-		return Cookie{}
+func (c *ResponseCookies) Get(key string) (Cookie, bool) {
+	if c == nil || key == "" {
+		return Cookie{}, false
 	}
-	return c.single[key]
+	values, ok := c.cookies[key]
+	if !ok || len(values) == 0 {
+		return Cookie{}, false
+	}
+	return values[0], true
 }
 
-func (c *ResponseCookies) GetAll(key string) []Cookie {
-	if c == nil || key == "" || c.single == nil {
-		return nil
+func (c *ResponseCookies) GetAll(key string) ([]Cookie, bool) {
+	if c == nil || key == "" {
+		return nil, false
 	}
-	cookie, ok := c.single[key]
-	if !ok {
-		return nil
+	values, ok := c.cookies[key]
+	if !ok || len(values) == 0 {
+		return nil, false
 	}
-	return []Cookie{cookie}
+	return cloneSlice(values), true
 }
 
 func (c *ResponseCookies) Set(cookie Cookie) {
@@ -370,13 +352,21 @@ func (c *ResponseCookies) Set(cookie Cookie) {
 		return
 	}
 	c.ensureMutable()
-	if c.single == nil {
-		c.single = make(map[string]Cookie)
+	if c.cookies == nil {
+		c.cookies = make(map[string][]Cookie)
 	}
-	if c.deleted != nil {
-		delete(c.deleted, cookie.Name)
+	c.cookies[cookie.Name] = []Cookie{cookie}
+}
+
+func (c *ResponseCookies) Append(cookie Cookie) {
+	if c == nil || cookie.Name == "" {
+		return
 	}
-	c.single[cookie.Name] = cookie
+	c.ensureMutable()
+	if c.cookies == nil {
+		c.cookies = make(map[string][]Cookie)
+	}
+	c.cookies[cookie.Name] = append(c.cookies[cookie.Name], cookie)
 }
 
 func (c *ResponseCookies) Delete(key string) {
@@ -384,21 +374,15 @@ func (c *ResponseCookies) Delete(key string) {
 		return
 	}
 	c.ensureMutable()
-	if c.single != nil {
-		delete(c.single, key)
-	}
-	if c.deleted == nil {
-		c.deleted = make(map[string]Cookie)
-	}
-	c.deleted[key] = Cookie{Name: key, Path: "/", MaxAge: -1, Expires: time.Unix(0, 0)}
+	delete(c.cookies, key)
 }
 
 func (c *ResponseCookies) Has(key string) bool {
-	if c == nil || key == "" || c.single == nil {
+	if c == nil || key == "" {
 		return false
 	}
-	_, ok := c.single[key]
-	return ok
+	values, ok := c.cookies[key]
+	return ok && len(values) > 0
 }
 
 func (c *ResponseCookies) IsEmpty() bool { return c.Count() == 0 }
@@ -407,15 +391,24 @@ func (c *ResponseCookies) Count() int {
 	if c == nil {
 		return 0
 	}
-	return len(c.single)
+	count := 0
+	for _, values := range c.cookies {
+		if len(values) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func (c *ResponseCookies) Keys() []string {
-	if c == nil || len(c.single) == 0 {
+	if c == nil || c.Count() == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(c.single))
-	for key := range c.single {
+	keys := make([]string, 0, c.Count())
+	for key, values := range c.cookies {
+		if key == "" || len(values) == 0 {
+			continue
+		}
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
@@ -423,42 +416,31 @@ func (c *ResponseCookies) Keys() []string {
 }
 
 func (c *ResponseCookies) Values() map[string][]Cookie {
-	if c == nil || len(c.single) == 0 {
+	if c == nil || c.Count() == 0 {
 		return nil
 	}
-	out := make(map[string][]Cookie, len(c.single))
-	for key, cookie := range c.single {
-		out[key] = []Cookie{cookie}
+	out := make(map[string][]Cookie, c.Count())
+	for key, values := range c.cookies {
+		if key == "" || len(values) == 0 {
+			continue
+		}
+		out[key] = cloneSlice(values)
 	}
 	return out
 }
 
-// PendingValues returns the cookies that must be written to the HTTP response,
-// including deletion tombstones. It is intended for the runtime bridge.
+// PendingValues returns the cookies that must be written to the HTTP response.
+// It is intended for the runtime bridge.
 func (c *ResponseCookies) PendingValues() map[string][]Cookie {
-	if c == nil || (len(c.single) == 0 && len(c.deleted) == 0) {
-		return nil
-	}
-	out := make(map[string][]Cookie, len(c.single)+len(c.deleted))
-	for key, cookie := range c.single {
-		out[key] = []Cookie{cookie}
-	}
-	for key, cookie := range c.deleted {
-		if key == "" {
-			continue
-		}
-		out[key] = []Cookie{cookie}
-	}
-	return out
+	return c.Values()
 }
 
 func (c *ResponseCookies) Entries() []Entry[Cookie] {
 	keys := c.Keys()
 	entries := make([]Entry[Cookie], 0, len(keys))
 	for _, key := range keys {
-		if cookie, ok := c.single[key]; ok {
-			entries = append(entries, Entry[Cookie]{Key: key, Value: []Cookie{cookie}})
-		}
+		values, _ := c.GetAll(key)
+		entries = append(entries, Entry[Cookie]{Key: key, Value: values})
 	}
 	return entries
 }
@@ -495,7 +477,6 @@ func (r *Response) redirect(status int, location string) {
 	if r == nil {
 		return
 	}
-	r.ensureMutable()
 	location = strings.TrimSpace(location)
 	file, line := responseFlowCallsite()
 	if location == "" {
@@ -509,8 +490,8 @@ func (r *Response) redirect(status int, location string) {
 		})
 	}
 
-	r.Status.setCodeInternal(status)
 	r.Headers.Set("Location", location)
+	r.Status.setCodeInternal(status)
 	panic(FlowControl{
 		Kind:       FlowRedirect,
 		StatusCode: status,
@@ -541,8 +522,6 @@ func (s *ResponseStatus) setCodeInternal(code int) {
 		return
 	}
 	s.code = code
-	s.message = defaultStatusMessage(code)
-	s.messageCustom = false
 }
 
 func (r *Response) ensureMutable() {
@@ -561,137 +540,6 @@ func (r *Response) ensureMutable() {
 		File:       file,
 		Line:       line,
 	})
-}
-
-func defaultStatusMessage(code int) string {
-	switch code {
-	case 100:
-		return "Continue"
-	case 101:
-		return "Switching Protocols"
-	case 102:
-		return "Processing"
-	case 103:
-		return "Early Hints"
-	case 200:
-		return "OK"
-	case 201:
-		return "Created"
-	case 202:
-		return "Accepted"
-	case 203:
-		return "Non-Authoritative Information"
-	case 204:
-		return "No Content"
-	case 205:
-		return "Reset Content"
-	case 206:
-		return "Partial Content"
-	case 207:
-		return "Multi-Status"
-	case 208:
-		return "Already Reported"
-	case 226:
-		return "IM Used"
-	case 300:
-		return "Multiple Choices"
-	case 301:
-		return "Moved Permanently"
-	case 302:
-		return "Found"
-	case 303:
-		return "See Other"
-	case 304:
-		return "Not Modified"
-	case 305:
-		return "Use Proxy"
-	case 307:
-		return "Temporary Redirect"
-	case 308:
-		return "Permanent Redirect"
-	case 400:
-		return "Bad Request"
-	case 401:
-		return "Unauthorized"
-	case 402:
-		return "Payment Required"
-	case 403:
-		return "Forbidden"
-	case 404:
-		return "Not Found"
-	case 405:
-		return "Method Not Allowed"
-	case 406:
-		return "Not Acceptable"
-	case 407:
-		return "Proxy Authentication Required"
-	case 408:
-		return "Request Timeout"
-	case 409:
-		return "Conflict"
-	case 410:
-		return "Gone"
-	case 411:
-		return "Length Required"
-	case 412:
-		return "Precondition Failed"
-	case 413:
-		return "Content Too Large"
-	case 414:
-		return "URI Too Long"
-	case 415:
-		return "Unsupported Media Type"
-	case 416:
-		return "Range Not Satisfiable"
-	case 417:
-		return "Expectation Failed"
-	case 418:
-		return "I'm a teapot"
-	case 421:
-		return "Misdirected Request"
-	case 422:
-		return "Unprocessable Content"
-	case 423:
-		return "Locked"
-	case 424:
-		return "Failed Dependency"
-	case 425:
-		return "Too Early"
-	case 426:
-		return "Upgrade Required"
-	case 428:
-		return "Precondition Required"
-	case 429:
-		return "Too Many Requests"
-	case 431:
-		return "Request Header Fields Too Large"
-	case 451:
-		return "Unavailable For Legal Reasons"
-	case 500:
-		return "Internal Server Error"
-	case 501:
-		return "Not Implemented"
-	case 502:
-		return "Bad Gateway"
-	case 503:
-		return "Service Unavailable"
-	case 504:
-		return "Gateway Timeout"
-	case 505:
-		return "HTTP Version Not Supported"
-	case 506:
-		return "Variant Also Negotiates"
-	case 507:
-		return "Insufficient Storage"
-	case 508:
-		return "Loop Detected"
-	case 510:
-		return "Not Extended"
-	case 511:
-		return "Network Authentication Required"
-	default:
-		return ""
-	}
 }
 
 var runtimeFlowCallsiteResolver func() (file string, line int)
@@ -724,7 +572,19 @@ type ResponseImportMap struct {
 	securitySource string
 }
 
-func (m *ResponseImportMap) Nonce() string {
+// ResponseImportMapRuntime contains operations reserved for generated GOX
+// code and the server runtime. Application code should use ResponseImportMap
+// directly through Set, Get, Has, Delete and Len.
+type ResponseImportMapRuntime struct {
+	importMap *ResponseImportMap
+}
+
+// Runtime returns the runtime-only view used by generated GOX code.
+func (m *ResponseImportMap) Runtime() ResponseImportMapRuntime {
+	return ResponseImportMapRuntime{importMap: m}
+}
+
+func (m *ResponseImportMap) nonceValue() string {
 	if m == nil {
 		return ""
 	}
@@ -756,15 +616,24 @@ func (m *ResponseImportMap) Set(specifier string, url string) {
 	m.imports[specifier] = url
 }
 
-func (m *ResponseImportMap) Get(specifier string) string {
+func (m *ResponseImportMap) Get(specifier string) (string, bool) {
 	if m == nil || m.imports == nil {
-		return ""
+		return "", false
 	}
-	return m.imports[specifier]
+	specifier = strings.TrimSpace(specifier)
+	if specifier == "" {
+		return "", false
+	}
+	url, ok := m.imports[specifier]
+	return url, ok
 }
 
 func (m *ResponseImportMap) Has(specifier string) bool {
 	if m == nil || m.imports == nil {
+		return false
+	}
+	specifier = strings.TrimSpace(specifier)
+	if specifier == "" {
 		return false
 	}
 	_, ok := m.imports[specifier]
@@ -773,6 +642,10 @@ func (m *ResponseImportMap) Has(specifier string) bool {
 
 func (m *ResponseImportMap) Delete(specifier string) {
 	if m == nil {
+		return
+	}
+	specifier = strings.TrimSpace(specifier)
+	if specifier == "" {
 		return
 	}
 	m.ensureMutable()
@@ -787,39 +660,6 @@ func (m *ResponseImportMap) Len() int {
 		return 0
 	}
 	return len(m.imports)
-}
-
-func (m *ResponseImportMap) Print() []byte {
-	if m == nil || len(m.imports) == 0 {
-		return nil
-	}
-	data, err := json.Marshal(m.imports)
-	if err != nil || len(data) < 2 {
-		return nil
-	}
-	return data[1 : len(data)-1]
-}
-
-func (m *ResponseImportMap) WriteEntries(w Writer, leadingComma bool) {
-	if m == nil || len(m.imports) == 0 || w == nil {
-		return
-	}
-	if leadingComma {
-		w.WriteByte(',')
-	}
-	data := m.Print()
-	w.WriteRawBytes(data)
-}
-
-func (m *ResponseImportMap) Modified() bool {
-	return m != nil && m.modified
-}
-
-func (m *ResponseImportMap) SecuritySource() string {
-	if m == nil || !m.emitted {
-		return ""
-	}
-	return m.securitySource
 }
 
 type responseImportMapPayload struct {
@@ -857,16 +697,18 @@ func (p responseImportMapPayload) MarshalJSON() ([]byte, error) {
 	return buf, nil
 }
 
-func (m *ResponseImportMap) ApplyCSP(staticHash string) {
+// ApplyCSP applies the import-map CSP required by generated GOX code.
+func (r ResponseImportMapRuntime) ApplyCSP(staticHash string) {
+	m := r.importMap
 	if m == nil || m.response == nil {
 		return
 	}
-	if m.response.Headers.Get("Content-Security-Policy") != "" {
+	if _, ok := m.response.Headers.Get("Content-Security-Policy"); ok {
 		return
 	}
 	scriptSrc := "'self'"
 	if m.modified {
-		n := m.Nonce()
+		n := m.nonceValue()
 		if n != "" {
 			m.securitySource = "'nonce-" + n + "'"
 		}
@@ -879,10 +721,9 @@ func (m *ResponseImportMap) ApplyCSP(staticHash string) {
 	m.response.Headers.Set("Content-Security-Policy", "default-src 'self'; script-src "+scriptSrc+"; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
 }
 
-// WriteCompiled writes exactly one import map. The static path is a single
-// precompiled write. The dynamic path combines compiled and request entries,
-// generates one nonce, and uses the existing Writer JSON serialization.
-func (m *ResponseImportMap) WriteCompiled(w Writer, staticEntries [][2]string, staticScript []byte, staticHash string) {
+// WriteCompiled writes exactly one import map for generated GOX code.
+func (r ResponseImportMapRuntime) WriteCompiled(w Writer, staticEntries [][2]string, staticScript []byte, staticHash string) {
+	m := r.importMap
 	if m == nil || w == nil {
 		return
 	}
@@ -898,7 +739,7 @@ func (m *ResponseImportMap) WriteCompiled(w Writer, staticEntries [][2]string, s
 	if len(staticEntries) == 0 && len(m.imports) == 0 {
 		return
 	}
-	nonce := m.Nonce()
+	nonce := m.nonceValue()
 	if nonce == "" {
 		return
 	}
@@ -908,6 +749,15 @@ func (m *ResponseImportMap) WriteCompiled(w Writer, staticEntries [][2]string, s
 	w.WriteRawAny(responseImportMapPayload{Static: staticEntries, Dynamic: m.imports})
 	w.WriteRawString(`</script>`)
 	m.emitted = true
+}
+
+// SecuritySource returns the CSP source emitted for the import map.
+func (r ResponseImportMapRuntime) SecuritySource() string {
+	m := r.importMap
+	if m == nil || !m.emitted {
+		return ""
+	}
+	return m.securitySource
 }
 
 func (m *ResponseImportMap) ensureMutable() {

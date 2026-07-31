@@ -90,7 +90,7 @@ func BenchmarkResponseHeadersGetLowercase(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		benchmarkHeaderString = response.Headers.Get("content-type")
+		benchmarkHeaderString, _ = response.Headers.Get("content-type")
 	}
 }
 
@@ -101,7 +101,7 @@ func BenchmarkResponseHeadersGetCanonical(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		benchmarkHeaderString = response.Headers.Get("Content-Type")
+		benchmarkHeaderString, _ = response.Headers.Get("Content-Type")
 	}
 }
 
@@ -114,7 +114,7 @@ func BenchmarkResponseHeadersGetAll(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		benchmarkHeaderValues = response.Headers.GetAll("vary")
+		benchmarkHeaderValues, _ = response.Headers.GetAll("vary")
 	}
 }
 

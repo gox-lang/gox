@@ -35,7 +35,7 @@ func TestWriteActionFileWritesMetadataAndContent(t *testing.T) {
 		"Content-Length":      "8",
 	}
 	for name, expected := range checks {
-		if got := response.Headers.Get(name); got != expected {
+		if got := responseHeaderValue(&response.Headers, name); got != expected {
 			t.Fatalf("%s = %q, want %q", name, got, expected)
 		}
 	}
@@ -84,13 +84,13 @@ func TestWriteActionFilesWritesOrderedMultipartResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := response.Headers.Get("Action-Response"); got != "success" {
+	if got := responseHeaderValue(&response.Headers, "Action-Response"); got != "success" {
 		t.Fatalf("Action-Response = %q", got)
 	}
-	if got := response.Headers.Get("Action-Type"); got != "files" {
+	if got := responseHeaderValue(&response.Headers, "Action-Type"); got != "files" {
 		t.Fatalf("Action-Type = %q", got)
 	}
-	mediaType, params, err := mime.ParseMediaType(response.Headers.Get("Content-Type"))
+	mediaType, params, err := mime.ParseMediaType(responseHeaderValue(&response.Headers, "Content-Type"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,13 +141,13 @@ func TestWriteActionFilesSupportsEmptySlice(t *testing.T) {
 	if err := WriteActionFiles(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := response.Headers.Get("Action-Response"); got != "success" {
+	if got := responseHeaderValue(&response.Headers, "Action-Response"); got != "success" {
 		t.Fatalf("Action-Response = %q", got)
 	}
-	if got := response.Headers.Get("Action-Type"); got != "files" {
+	if got := responseHeaderValue(&response.Headers, "Action-Type"); got != "files" {
 		t.Fatalf("Action-Type = %q", got)
 	}
-	mediaType, params, err := mime.ParseMediaType(response.Headers.Get("Content-Type"))
+	mediaType, params, err := mime.ParseMediaType(responseHeaderValue(&response.Headers, "Content-Type"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,10 +287,10 @@ func TestWriteActionFileSupportsEmptyContentAndEmojiFilename(t *testing.T) {
 	if err := WriteActionFile(ctx, file); err != nil {
 		t.Fatal(err)
 	}
-	if got := response.Headers.Get("Content-Length"); got != "0" {
+	if got := responseHeaderValue(&response.Headers, "Content-Length"); got != "0" {
 		t.Fatalf("Content-Length = %q", got)
 	}
-	_, params, err := mime.ParseMediaType(response.Headers.Get("Content-Disposition"))
+	_, params, err := mime.ParseMediaType(responseHeaderValue(&response.Headers, "Content-Disposition"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestWriteActionFilesPreservesDuplicateNamesAndEmptyParts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, params, err := mime.ParseMediaType(response.Headers.Get("Content-Type"))
+	_, params, err := mime.ParseMediaType(responseHeaderValue(&response.Headers, "Content-Type"))
 	if err != nil {
 		t.Fatal(err)
 	}

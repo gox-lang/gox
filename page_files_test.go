@@ -27,7 +27,7 @@ func TestWritePageFilesWritesOrderedMultipartResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mediaType, params, err := mimeParseMediaType(response.Headers.Get("Content-Type"))
+	mediaType, params, err := mimeParseMediaType(responseHeaderValue(&response.Headers, "Content-Type"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestWritePageFilesSupportsEmptySlice(t *testing.T) {
 	if err := WritePageFiles(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	mediaType, params, err := mimeParseMediaType(response.Headers.Get("Content-Type"))
+	mediaType, params, err := mimeParseMediaType(responseHeaderValue(&response.Headers, "Content-Type"))
 	if err != nil {
 		t.Fatal(err)
 	}
