@@ -150,8 +150,8 @@ func (lifecycle *sessionLifecycle) isDestroyed() bool {
 }
 
 type Session struct {
-	ID    string
-	Token string
+	id    string
+	token string
 
 	instance    SessionStorageInstance
 	rotate      SessionRotateFunc
@@ -173,6 +173,12 @@ func NewSession(instance SessionStorageInstance) Session {
 	return NewSessionWithRotate(instance, nil)
 }
 
+// NewSessionReference creates a read-only session identity for runtime-owned
+// references that do not have access to the session storage instance.
+func NewSessionReference(id string) Session {
+	return Session{id: id}
+}
+
 func NewSessionWithRotate(instance SessionStorageInstance, rotate SessionRotateFunc) Session {
 	return NewSessionWithLifecycle(instance, rotate, nil, nil)
 }
@@ -183,8 +189,8 @@ func NewSessionWithLifecycle(instance SessionStorageInstance, rotate SessionRota
 	}
 
 	return Session{
-		ID:          instance.ID(),
-		Token:       instance.Token(),
+		id:          instance.ID(),
+		token:       instance.Token(),
 		instance:    instance,
 		rotate:      rotate,
 		lifecycle:   &sessionLifecycle{destroy: destroy},
@@ -199,14 +205,32 @@ func DetachSession(session Session) Session {
 	session.rotate = nil
 	session.onDestroyed = nil
 	if session.instance != nil {
-		session.Token = session.instance.Token()
+		session.token = session.instance.Token()
 	}
 	return session
 }
 
+// ID returns the immutable identifier of this session.
+func (s *Session) ID() string {
+	if s == nil {
+		return ""
+	}
+
+	return s.id
+}
+
+// Token returns the current token of this session.
+func (s *Session) Token() string {
+	if s == nil {
+		return ""
+	}
+
+	return s.token
+}
+
 // Destroy permanently removes this session. Repeated calls are idempotent.
 func (s *Session) Destroy() error {
-	if s == nil || s.instance == nil || s.ID == "" || s.lifecycle == nil {
+	if s == nil || s.instance == nil || s.id == "" || s.lifecycle == nil {
 		return ErrSessionNotAvailable
 	}
 	destroyed, err := s.lifecycle.destroySession()
@@ -363,7 +387,7 @@ func (s *Session) Rotate() error {
 		return err
 	}
 
-	s.Token = token
+	s.token = token
 	return nil
 }
 
@@ -392,5 +416,5 @@ func (s *Session) GetTTL() time.Duration {
 }
 
 func (s *Session) available() bool {
-	return s != nil && s.instance != nil && s.ID != "" && !s.IsDestroyed()
+	return s != nil && s.instance != nil && s.id != "" && !s.IsDestroyed()
 }

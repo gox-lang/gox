@@ -196,6 +196,15 @@ func TestDetachSessionPreservesStorageAndRemovesRequestRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := NewSessionWithRotate(instance, func() (string, error) { return "rotated", nil })
+	if original.ID() != "detached" || original.Token() != "token" {
+		t.Fatalf("session identity = %q/%q", original.ID(), original.Token())
+	}
+	if err := original.Rotate(); err != nil {
+		t.Fatal(err)
+	}
+	if original.ID() != "detached" || original.Token() != "rotated" {
+		t.Fatalf("rotated session identity = %q/%q", original.ID(), original.Token())
+	}
 	detached := DetachSession(original)
 	if err := detached.Set("name", "Javier"); err != nil {
 		t.Fatal(err)

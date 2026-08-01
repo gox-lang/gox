@@ -1,6 +1,10 @@
 package gox
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gox-lang/gox/server"
+)
 
 func TestSocketRegistryAreStableAndZeroSafe(t *testing.T) {
 	if Sockets == nil {
@@ -20,9 +24,9 @@ func TestSocketRegistryAreStableAndZeroSafe(t *testing.T) {
 }
 
 func TestSocketRegistryBindFindEmitDisconnectAndRemainDynamic(t *testing.T) {
-	first := &Socket{ID: "first", Session: Session{ID: "session-1"}}
-	second := &Socket{ID: "second", Session: Session{ID: "session-1"}}
-	third := &Socket{ID: "third", Session: Session{ID: "session-2"}}
+	first := &Socket{ID: "first", Session: server.NewSessionReference("session-1")}
+	second := &Socket{ID: "second", Session: server.NewSessionReference("session-1")}
+	third := &Socket{ID: "third", Session: server.NewSessionReference("session-2")}
 	current := []*Socket{first, third}
 
 	cleanup := BindSocketRegistry(SocketRegistryBindings{
@@ -38,7 +42,7 @@ func TestSocketRegistryBindFindEmitDisconnectAndRemainDynamic(t *testing.T) {
 		FindBySessionID: func(sessionID string) []*Socket {
 			result := []*Socket{}
 			for _, socket := range current {
-				if socket.Session.ID == sessionID {
+				if socket.Session.ID() == sessionID {
 					result = append(result, socket)
 				}
 			}
