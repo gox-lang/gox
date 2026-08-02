@@ -8,8 +8,8 @@ import (
 
 func TestChannelIdentityLifecycleAndBroadcastContract(t *testing.T) {
 	channel := NewChannel("Chat#venezuela", "Chat", "venezuela")
-	first := &Socket{ID: "first"}
-	second := &Socket{ID: "second"}
+	first := newTestSocket("first")
+	second := newTestSocket("second")
 	members := []*Socket{first}
 	emitted := ""
 	left := ""
@@ -17,7 +17,7 @@ func TestChannelIdentityLifecycleAndBroadcastContract(t *testing.T) {
 	BindChannelRuntime(channel, ChannelRuntimeBindings{
 		Members: func() []*Socket { return members },
 		Emit:    func(event string, _ []any) error { emitted = event; return nil },
-		Leave:   func(socket *Socket) error { left = socket.ID; return nil },
+		Leave:   func(socket *Socket) error { left = socket.ID(); return nil },
 		Close:   func() error { closed = true; return nil },
 	})
 	if channel.ID() != "Chat#venezuela" || channel.Name() != "Chat" || channel.Key() != "venezuela" {
@@ -44,7 +44,7 @@ func TestChannelIdentityLifecycleAndBroadcastContract(t *testing.T) {
 
 func TestChannelValidateIsStrictBoolAndErrorsAreIsolated(t *testing.T) {
 	channel := NewChannel("Chat", "Chat", "")
-	socket := &Socket{ID: "socket"}
+	socket := newTestSocket("socket")
 	channel.When("validate", func(received *Socket, value string) bool { return received == socket && value == "token" })
 	result, handled, err := channel.DispatchWhen("validate", socket, "token")
 	if err != nil || !handled || result != true {
@@ -90,7 +90,7 @@ func TestChannelRegistryIsZeroSafeAndGenerationSafe(t *testing.T) {
 }
 
 func TestChannelEmitUsesNamespacedSocketTransport(t *testing.T) {
-	socket := &Socket{ID: "socket-1"}
+	socket := newTestSocket("socket-1")
 	received := ""
 	BindSocketChannelTransport(socket, SocketChannelTransport{Emit: func(channelID, event string, values []any) error {
 		received = channelID + ":" + event
@@ -108,7 +108,7 @@ func TestChannelEmitUsesNamespacedSocketTransport(t *testing.T) {
 
 func TestChannelGenerationCommitPreservesCoreAndInFlightDispatch(t *testing.T) {
 	channel := NewChannel("Chat#room", "Chat", "room")
-	socket := &Socket{ID: "socket-1"}
+	socket := newTestSocket("socket-1")
 	members := []*Socket{socket}
 	emitted := 0
 	BindChannelRuntime(channel, ChannelRuntimeBindings{

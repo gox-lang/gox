@@ -24,16 +24,19 @@ func TestSocketRegistryAreStableAndZeroSafe(t *testing.T) {
 }
 
 func TestSocketRegistryBindFindEmitDisconnectAndRemainDynamic(t *testing.T) {
-	first := &Socket{ID: "first", Session: server.NewSessionReference("session-1")}
-	second := &Socket{ID: "second", Session: server.NewSessionReference("session-1")}
-	third := &Socket{ID: "third", Session: server.NewSessionReference("session-2")}
+	first := newTestSocket("first")
+	first.Session = server.NewSessionReference("session-1")
+	second := newTestSocket("second")
+	second.Session = server.NewSessionReference("session-1")
+	third := newTestSocket("third")
+	third.Session = server.NewSessionReference("session-2")
 	current := []*Socket{first, third}
 
 	cleanup := BindSocketRegistry(SocketRegistryBindings{
 		All: func() []*Socket { return current },
 		FindByID: func(id string) (*Socket, bool) {
 			for _, socket := range current {
-				if socket.ID == id {
+				if socket.ID() == id {
 					return socket, true
 				}
 			}
@@ -87,8 +90,8 @@ func TestSocketRegistryBindFindEmitDisconnectAndRemainDynamic(t *testing.T) {
 }
 
 func TestSocketRegistryOldCleanupCannotUnbindNewRuntime(t *testing.T) {
-	oldSocket := &Socket{ID: "old"}
-	newSocket := &Socket{ID: "new"}
+	oldSocket := newTestSocket("old")
+	newSocket := newTestSocket("new")
 	cleanupOld := BindSocketRegistry(SocketRegistryBindings{All: func() []*Socket { return []*Socket{oldSocket} }})
 	cleanupNew := BindSocketRegistry(SocketRegistryBindings{All: func() []*Socket { return []*Socket{newSocket} }})
 	defer cleanupNew()
@@ -147,10 +150,10 @@ func TestSocketRegistryDistributedDisconnectUsesOneRuntimeOperation(t *testing.T
 }
 
 func TestSocketRegistryGetByIDReturnsOneSocketWhileCollectionsRemainBroadcastOnly(t *testing.T) {
-	selected := &Socket{ID: "remote-socket"}
+	selected := newTestSocket("remote-socket")
 	cleanup := BindSocketRegistry(SocketRegistryBindings{
 		FindByID: func(id string) (*Socket, bool) {
-			if id == selected.ID {
+			if id == selected.ID() {
 				return selected, true
 			}
 			return nil, false

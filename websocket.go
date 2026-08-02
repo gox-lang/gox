@@ -103,10 +103,6 @@ type WSDisconnectReason struct {
 
 // Socket represents one WebSocket connection between a client and the server.
 type Socket struct {
-	// ID uniquely identifies this connection for its complete lifetime.
-	// It is assigned by the GOX server after a successful WebSocket upgrade.
-	ID string
-
 	// Session is the same live session used by the HTTP upgrade request.
 	Session Session
 
@@ -117,8 +113,10 @@ type Socket struct {
 	// socket's session. The current socket is never part of this collection.
 	Siblings SocketCollection
 
-	instanceID string
-	local      bool
+	id            string
+	identityBound bool
+	instanceID    string
+	local         bool
 
 	mu                    sync.RWMutex
 	when                  map[string]any
@@ -138,6 +136,45 @@ type Socket struct {
 	channelEmitRuntime    func(channelID string, event string, values []any) error
 	channelLeaveRuntime   func(channelID string, reason ChannelDisconnectReason) error
 	pendingEmits          []socketEmission
+}
+
+// ID uniquely identifies this connection for its complete lifetime. It is
+// assigned by the GOX server after a successful WebSocket upgrade.
+func (s *Socket) ID() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	id := s.id
+	s.mu.RUnlock()
+	return id
+}
+
+// BindSocketIdentity reserves the immutable host-owned socket identifier and
+// returns its one-time assignment function. It is reserved for the GOX runtime
+// when constructing real sockets and remote proxies. Rebinding returns nil.
+func BindSocketIdentity(s *Socket) func(string) {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	if s.identityBound {
+		s.mu.Unlock()
+		return nil
+	}
+	s.identityBound = true
+	s.mu.Unlock()
+
+	return func(id string) {
+		if id == "" {
+			return
+		}
+		s.mu.Lock()
+		if s.id == "" {
+			s.id = id
+		}
+		s.mu.Unlock()
+	}
 }
 
 // SocketChannelTransport is reserved for the GOX Channel runtime.

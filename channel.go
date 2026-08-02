@@ -222,7 +222,7 @@ func (channel *Channel) Has(socket *Socket) bool {
 		return false
 	}
 	for _, member := range channel.Members().All() {
-		if member == socket || (member != nil && member.ID != "" && member.ID == socket.ID) {
+		if member == socket || (member != nil && member.ID() != "" && member.ID() == socket.ID()) {
 			return true
 		}
 	}

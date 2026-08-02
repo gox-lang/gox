@@ -9,7 +9,7 @@ func BenchmarkChannelDispatchOn(b *testing.B) {
 		Text string
 		ID   int
 	}
-	socket := &Socket{ID: "benchmark-socket"}
+	socket := newTestSocket("benchmark-socket")
 	cases := []struct {
 		name    string
 		handler any

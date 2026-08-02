@@ -64,7 +64,7 @@ func TestGlobalGroupsAreZeroSafeAndGenerationSafe(t *testing.T) {
 }
 
 func TestGlobalGroupMembersRemainDynamicAndEmitThroughGroupTransport(t *testing.T) {
-	first := &Socket{ID: "first"}
+	first := newTestSocket("first")
 	current := []*Socket{first}
 	received := ""
 	cleanup := BindGroups(GroupRegistryBindings{
@@ -77,7 +77,7 @@ func TestGlobalGroupMembersRemainDynamicAndEmitThroughGroupTransport(t *testing.
 	if members.Count() != 1 {
 		t.Fatalf("members count = %d", members.Count())
 	}
-	current = append(current, &Socket{ID: "second"})
+	current = append(current, newTestSocket("second"))
 	if members.Count() != 2 {
 		t.Fatalf("dynamic members count = %d", members.Count())
 	}

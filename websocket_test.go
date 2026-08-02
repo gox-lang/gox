@@ -8,6 +8,32 @@ import (
 	"testing"
 )
 
+func newTestSocket(id string) *Socket {
+	socket := &Socket{}
+	BindSocketIdentity(socket)(id)
+	return socket
+}
+
+func TestSocketIdentityIsReadOnlyAndAssignedOnce(t *testing.T) {
+	socket := &Socket{}
+	if socket.ID() != "" {
+		t.Fatalf("zero socket ID = %q", socket.ID())
+	}
+
+	assign := BindSocketIdentity(socket)
+	if assign == nil {
+		t.Fatal("socket identity was not reserved")
+	}
+	if duplicate := BindSocketIdentity(socket); duplicate != nil {
+		t.Fatal("socket identity could be rebound")
+	}
+	assign("socket-1")
+	assign("socket-2")
+	if socket.ID() != "socket-1" {
+		t.Fatalf("socket ID = %q", socket.ID())
+	}
+}
+
 func TestSocketEmitQueuesUntilRuntimeBinding(t *testing.T) {
 	socket := &Socket{}
 	socket.Emit("first", 1)
