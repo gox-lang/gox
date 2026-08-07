@@ -70,6 +70,70 @@ func TestMemorySessionOpenPreservesConfiguredTTL(t *testing.T) {
 	}
 }
 
+func TestMemorySessionGetDoesNotRequireTokenOrRenewTTL(t *testing.T) {
+	runtime := newMemorySessionRuntime(nil)
+	t.Cleanup(func() { _ = runtime.Close() })
+	now := time.Now()
+	expireAt := now.Add(time.Hour)
+	created, err := runtime.CreateSession(context.Background(), &SessionMeta{
+		ID: "global-get", Token: "secret", TTL: time.Hour,
+		CreatedAt: now, UpdatedAt: now, ExpireAt: expireAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := created.Set("name", "George"); err != nil {
+		t.Fatal(err)
+	}
+
+	instance, err := runtime.GetSession(context.Background(), "global-get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var name string
+	if ok, err := instance.Get("name", &name); err != nil || !ok || name != "George" {
+		t.Fatalf("name = %q, ok=%v, err=%v", name, ok, err)
+	}
+	rec, _ := runtime.record("global-get")
+	rec.mu.RLock()
+	gotExpireAt := rec.expireAt
+	rec.mu.RUnlock()
+	if !gotExpireAt.Equal(expireAt) {
+		t.Fatalf("GetSession renewed expiration: got %s, want %s", gotExpireAt, expireAt)
+	}
+
+	if _, err := runtime.GetSession(context.Background(), "missing"); !errors.Is(err, ErrSessionNotAvailable) {
+		t.Fatalf("missing GetSession() error = %v", err)
+	}
+}
+
+func TestSessionSaveUsesConfiguredPersistence(t *testing.T) {
+	runtime := newMemorySessionRuntime(nil)
+	t.Cleanup(func() { _ = runtime.Close() })
+	now := time.Now()
+	instance, err := runtime.CreateSession(context.Background(), &SessionMeta{
+		ID: "save-api", Token: "token", TTL: time.Hour,
+		CreatedAt: now, UpdatedAt: now, ExpireAt: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saves := 0
+	session := NewSessionWithLifecycle(instance, nil, nil, nil, func() error {
+		saves++
+		return nil
+	})
+	if err := session.Set("name", "George"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if saves != 1 {
+		t.Fatalf("save calls = %d, want 1", saves)
+	}
+}
+
 func TestMemorySessionTouchRejectsExpiredAndMissingSessions(t *testing.T) {
 	runtime := newMemorySessionRuntime(nil)
 	t.Cleanup(func() { _ = runtime.Close() })

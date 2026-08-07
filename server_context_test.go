@@ -1,10 +1,41 @@
 package gox
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/gox-lang/gox/server"
 )
+
+func TestSessionRegistryGetAndIdentitySafeCleanup(t *testing.T) {
+	cleanup := BindSessionRegistry(SessionRegistryBindings{})
+	defer cleanup()
+	if session, err := Sessions.Get(""); session != nil || !errors.Is(err, server.ErrSessionNotAvailable) {
+		t.Fatalf("empty Get() = %#v, %v", session, err)
+	}
+	if session, err := Sessions.Get("missing"); session != nil || !errors.Is(err, server.ErrSessionNotAvailable) {
+		t.Fatalf("unbound Get() = %#v, %v", session, err)
+	}
+
+	expected := server.NewSessionReference("current")
+	cleanupOld := BindSessionRegistry(SessionRegistryBindings{Get: func(string) (*Session, error) {
+		old := server.NewSessionReference("old")
+		return &old, nil
+	}})
+	cleanupNew := BindSessionRegistry(SessionRegistryBindings{Get: func(sessionID string) (*Session, error) {
+		if sessionID != "current" {
+			return nil, server.ErrSessionNotAvailable
+		}
+		return &expected, nil
+	}})
+	defer cleanupNew()
+	cleanupOld()
+
+	session, err := Sessions.Get("current")
+	if err != nil || session != &expected {
+		t.Fatalf("Get() = %#v, %v", session, err)
+	}
+}
 
 func TestSocketRegistryAreStableAndZeroSafe(t *testing.T) {
 	if Sockets == nil {

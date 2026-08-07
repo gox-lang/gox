@@ -172,6 +172,34 @@ func (a *memorySessionRuntime) OpenSession(ctx context.Context, request SessionO
 	}, nil
 }
 
+func (a *memorySessionRuntime) GetSession(ctx context.Context, sessionID string) (SessionStorageInstance, error) {
+	_ = ctx
+	if a == nil || strings.TrimSpace(sessionID) == "" {
+		return nil, ErrSessionNotAvailable
+	}
+
+	rec, ok := a.record(sessionID)
+	if !ok {
+		return nil, ErrSessionNotAvailable
+	}
+
+	now := time.Now()
+	rec.mu.Lock()
+	if rec.state != stateActive {
+		rec.mu.Unlock()
+		return nil, ErrSessionNotAvailable
+	}
+	if !now.Before(rec.expireAt) {
+		rec.state = stateExpired
+		rec.updatedAt = now
+		rec.mu.Unlock()
+		return nil, ErrSessionExpired
+	}
+	rec.mu.Unlock()
+
+	return &memorySessionInstance{adapter: a, id: sessionID}, nil
+}
+
 func (a *memorySessionRuntime) CreateSession(ctx context.Context, sessionMeta *SessionMeta) (SessionStorageInstance, error) {
 	_ = ctx
 

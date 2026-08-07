@@ -35,6 +35,7 @@ type SessionStorageRuntime interface {
 	Close() error
 
 	OpenSession(ctx context.Context, request SessionOpenRequest) (SessionOpenResult, error)
+	GetSession(ctx context.Context, sessionID string) (SessionStorageInstance, error)
 	CreateSession(ctx context.Context, meta *SessionMeta) (SessionStorageInstance, error)
 	SaveSession(ctx context.Context, sessionID string) error
 	TouchSession(ctx context.Context, sessionID string, ttl time.Duration) error
@@ -116,6 +117,7 @@ type SessionEventFunc func(event SessionEvent)
 
 type SessionRotateFunc func() (string, error)
 type SessionDestroyFunc func() error
+type SessionSaveFunc func() error
 
 type sessionLifecycle struct {
 	mu        sync.Mutex
@@ -155,6 +157,7 @@ type Session struct {
 
 	instance    SessionStorageInstance
 	rotate      SessionRotateFunc
+	save        SessionSaveFunc
 	lifecycle   *sessionLifecycle
 	onDestroyed func()
 }
@@ -183,9 +186,14 @@ func NewSessionWithRotate(instance SessionStorageInstance, rotate SessionRotateF
 	return NewSessionWithLifecycle(instance, rotate, nil, nil)
 }
 
-func NewSessionWithLifecycle(instance SessionStorageInstance, rotate SessionRotateFunc, destroy SessionDestroyFunc, onDestroyed func()) Session {
+func NewSessionWithLifecycle(instance SessionStorageInstance, rotate SessionRotateFunc, destroy SessionDestroyFunc, onDestroyed func(), save ...SessionSaveFunc) Session {
 	if instance == nil {
 		return Session{}
+	}
+
+	var saveSession SessionSaveFunc
+	if len(save) > 0 {
+		saveSession = save[0]
 	}
 
 	return Session{
@@ -193,6 +201,7 @@ func NewSessionWithLifecycle(instance SessionStorageInstance, rotate SessionRota
 		token:       instance.Token(),
 		instance:    instance,
 		rotate:      rotate,
+		save:        saveSession,
 		lifecycle:   &sessionLifecycle{destroy: destroy},
 		onDestroyed: onDestroyed,
 	}
@@ -397,6 +406,15 @@ func (s *Session) Clear() error {
 	}
 
 	return s.instance.Clear()
+}
+
+// Save persists every pending change made to this session.
+func (s *Session) Save() error {
+	if !s.available() || s.save == nil {
+		return ErrSessionNotAvailable
+	}
+
+	return s.save()
 }
 
 func (s *Session) SetTTL(ttl time.Duration) {
