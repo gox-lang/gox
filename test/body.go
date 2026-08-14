@@ -1,16 +1,23 @@
 package test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/textproto"
 	"net/url"
+	"sort"
 	"strings"
+
+	"github.com/gox-lang/gox"
 )
 
 type RequestBodyValue interface {
 	isRequestBody()
-	ContentType() string
-	Bytes() ([]byte, error)
+	Encode() ([]byte, string, error)
 }
 
 type RequestBodyRaw struct {
@@ -23,8 +30,7 @@ type RequestBodyQuery struct {
 }
 
 type RequestBodyFormData struct {
-	Values map[string]string
-	// Files is intentionally omitted in v1. Uploads should be added explicitly later.
+	Values FormData
 }
 
 type RequestBodyJSON struct {
@@ -36,34 +42,92 @@ func (RequestBodyQuery) isRequestBody()    {}
 func (RequestBodyFormData) isRequestBody() {}
 func (RequestBodyJSON) isRequestBody()     {}
 
-func (b RequestBodyRaw) ContentType() string {
+func (b RequestBodyRaw) Encode() ([]byte, string, error) {
 	if b.ContentTypeValue != "" {
-		return b.ContentTypeValue
+		return []byte(b.Content), b.ContentTypeValue, nil
 	}
-	return "text/plain; charset=utf-8"
+	return []byte(b.Content), "text/plain; charset=utf-8", nil
 }
-func (b RequestBodyRaw) Bytes() ([]byte, error) { return []byte(b.Content), nil }
 
-func (RequestBodyQuery) ContentType() string { return "application/x-www-form-urlencoded" }
-func (b RequestBodyQuery) Bytes() ([]byte, error) {
+func (b RequestBodyQuery) Encode() ([]byte, string, error) {
 	values := make(url.Values, len(b.Values))
 	for k, v := range b.Values {
 		values.Set(k, v)
 	}
-	return []byte(values.Encode()), nil
+	return []byte(values.Encode()), "application/x-www-form-urlencoded", nil
 }
 
-func (RequestBodyFormData) ContentType() string { return "application/x-www-form-urlencoded" }
-func (b RequestBodyFormData) Bytes() ([]byte, error) {
-	values := make(url.Values, len(b.Values))
-	for k, v := range b.Values {
-		values.Set(k, v)
+func (b RequestBodyFormData) Encode() ([]byte, string, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	keys := make([]string, 0, len(b.Values))
+	for key := range b.Values {
+		keys = append(keys, key)
 	}
-	return []byte(values.Encode()), nil
+	sort.Strings(keys)
+	for _, key := range keys {
+		if err := writeFormValue(writer, key, b.Values[key]); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("gox/test: close multipart body: %w", err)
+	}
+	return body.Bytes(), writer.FormDataContentType(), nil
 }
 
-func (RequestBodyJSON) ContentType() string      { return "application/json; charset=utf-8" }
-func (b RequestBodyJSON) Bytes() ([]byte, error) { return json.Marshal(b.Value) }
+func (b RequestBodyJSON) Encode() ([]byte, string, error) {
+	data, err := json.Marshal(b.Value)
+	return data, "application/json; charset=utf-8", err
+}
+
+func writeFormValue(writer *multipart.Writer, key string, value any) error {
+	switch typed := value.(type) {
+	case string:
+		return writer.WriteField(key, typed)
+	case []string:
+		for _, item := range typed {
+			if err := writer.WriteField(key, item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case gox.File:
+		return writeFormFile(writer, key, typed)
+	case []gox.File:
+		for _, file := range typed {
+			if err := writeFormFile(writer, key, file); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("gox/test: form field %q has unsupported type %T", key, value)
+	}
+}
+
+func writeFormFile(writer *multipart.Writer, key string, file gox.File) error {
+	if file.IsZero() {
+		return fmt.Errorf("gox/test: form field %q contains a zero file", key)
+	}
+	reader, err := file.Open()
+	if err != nil {
+		return fmt.Errorf("gox/test: open form file %q: %w", key, err)
+	}
+	defer reader.Close()
+	disposition := mime.FormatMediaType("form-data", map[string]string{"name": key, "filename": file.Name()})
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", disposition)
+	header.Set("Content-Type", file.ContentType())
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(part, reader); err != nil {
+		return err
+	}
+	return nil
+}
 
 type requestBodyFactory struct{}
 
@@ -77,7 +141,7 @@ func (requestBodyFactory) RawWithType(content, contentType string) RequestBodyRa
 func (requestBodyFactory) Query(values map[string]string) RequestBodyQuery {
 	return RequestBodyQuery{Values: values}
 }
-func (requestBodyFactory) FormData(values map[string]string) RequestBodyFormData {
+func (requestBodyFactory) FormData(values FormData) RequestBodyFormData {
 	return RequestBodyFormData{Values: values}
 }
 func (requestBodyFactory) JSON(value any) RequestBodyJSON { return RequestBodyJSON{Value: value} }
@@ -86,8 +150,14 @@ type ExpectedBodyRule interface {
 	MatchBody(body []byte) BodyMatchResult
 }
 
+// ExpectedHTTPBodyRule optionally matches with response metadata available.
+type ExpectedHTTPBodyRule interface {
+	ExpectedBodyRule
+	MatchHTTPBody(contentType, disposition string, body []byte) BodyMatchResult
+}
+
 type ExpectedBodyEqual struct {
-	Content string `json:"content"`
+	Content any `json:"content"`
 }
 type ExpectedBodyNotEqual struct {
 	Content string `json:"content"`
@@ -102,6 +172,7 @@ type ExpectedBodySnapshot struct {
 	File string `json:"file"`
 	// Content is filled by the executor after reading File.
 	Content string `json:"-"`
+	Error   string `json:"-"`
 }
 type ExpectedBodyJSONEqual struct {
 	Value any `json:"value,omitempty"`
@@ -120,13 +191,39 @@ type ExpectedBodyCustom struct {
 }
 
 func (r ExpectedBodyEqual) MatchBody(body []byte) BodyMatchResult {
+	if file, ok := r.Content.(gox.File); ok {
+		return matchFileBody(file, "", "", body)
+	}
+	if files, ok := r.Content.([]gox.File); ok {
+		return BodyMatchResult{Rule: "equal", Expected: fileMetadataList(files), Response: string(body), Match: false, Message: "multipart response metadata is required to compare files"}
+	}
+	expected, ok := r.Content.(string)
+	if !ok {
+		return BodyMatchResult{Rule: "equal", Expected: r.Content, Response: string(body), Match: false, Message: fmt.Sprintf("unsupported body expectation type %T", r.Content)}
+	}
 	actual := string(body)
-	match := actual == r.Content
-	result := BodyMatchResult{Rule: "equal", Expected: r.Content, Response: actual, Match: match}
+	match := actual == expected
+	result := BodyMatchResult{Rule: "equal", Expected: expected, Response: actual, Match: match}
 	if !match {
-		result.Diff = firstBodyDiff(r.Content, actual)
+		result.Diff = firstBodyDiff(expected, actual)
 	}
 	return result
+}
+
+func (r ExpectedBodyEqual) MatchHTTPBody(contentType, disposition string, body []byte) BodyMatchResult {
+	switch expected := r.Content.(type) {
+	case gox.File:
+		return matchFileBody(expected, contentType, disposition, body)
+	case []gox.File:
+		actual, err := decodeMultipartFiles(contentType, body)
+		if err != nil {
+			return BodyMatchResult{Rule: "equal", Expected: fileMetadataList(expected), Match: false, Message: err.Error()}
+		}
+		match, message := filesEqual(expected, actual)
+		return BodyMatchResult{Rule: "equal", Expected: fileMetadataList(expected), Response: fileMetadataList(actual), Match: match, Message: message}
+	default:
+		return r.MatchBody(body)
+	}
 }
 
 func (r ExpectedBodyNotEqual) MatchBody(body []byte) BodyMatchResult {
@@ -178,6 +275,9 @@ func (r ExpectedBodyNotContains) MatchBody(body []byte) BodyMatchResult {
 }
 
 func (r ExpectedBodySnapshot) MatchBody(body []byte) BodyMatchResult {
+	if r.Error != "" {
+		return BodyMatchResult{Rule: "snapshot", Match: false, Message: r.Error}
+	}
 	actual := string(body)
 	match := actual == r.Content
 	result := BodyMatchResult{Rule: "snapshot", Expected: r.Content, Response: actual, Match: match}
@@ -479,7 +579,7 @@ type expectedBodyFactory struct{}
 
 var ExpectedBody expectedBodyFactory
 
-func (expectedBodyFactory) Equal(content string) ExpectedBodyEqual {
+func (expectedBodyFactory) Equal(content any) ExpectedBodyEqual {
 	return ExpectedBodyEqual{Content: content}
 }
 func (expectedBodyFactory) NotEqual(content string) ExpectedBodyNotEqual {

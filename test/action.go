@@ -53,12 +53,12 @@ func (r ExpectedActionResultExact) MatchActionResult(value any) ActionValueMatch
 	match := valuesEqual(value, r.Value)
 	result := ActionValueMatchResult{
 		Rule:     "exact",
-		Expected: r.Value,
-		Response: value,
+		Expected: fileDisplayValue(r.Value),
+		Response: fileDisplayValue(value),
 		Match:    match,
 	}
 	if !match {
-		result.JSONFindings = []JSONMatchFinding{{Path: "$", Expected: r.Value, Response: value, Found: true, Match: false, Message: "action result does not equal expected value"}}
+		result.JSONFindings = []JSONMatchFinding{{Path: "$", Expected: fileDisplayValue(r.Value), Response: fileDisplayValue(value), Found: true, Match: false, Message: "action result does not equal expected value"}}
 	}
 	return result
 }

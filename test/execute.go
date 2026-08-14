@@ -3,6 +3,7 @@ package test
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -183,23 +184,6 @@ func (noopExecutor) Execute(config Config, pipeline []ExecutePipeLine) (ExecuteR
 	return result, false
 }
 
-// Benchmark is reserved for future direct use. In normal GoX tests, benchmarks are run by
-// executing the same test.Execute code under gox test -bench.
-func Benchmark(config Config, pipeline []ExecutePipeLine) (ExecuteResult, bool) {
-	result := ExecuteResult{
-		Match: false,
-		Steps: []StepResult{{
-			Index: 1,
-			Type:  "error",
-			Match: false,
-			Error: "gox/test: Benchmark direct API is not implemented; use gox test -bench",
-		}},
-	}
-	result = applyContext(result)
-	recordResult(result)
-	return result, false
-}
-
 // Save writes the complete result metadata to tests/results/<TestName>/<mode>.json.
 // In test mode it also writes browser-like response artifacts under
 // tests/results/<TestName>/responses/.
@@ -241,6 +225,27 @@ func saveResponseArtifacts(resultDir string, result ExecuteResult) error {
 			wrote = true
 		}
 		name := responseArtifactName(step)
+		if files, ok := responseArtifactFiles(step.Response); ok {
+			dir := filepath.Join(responsesDir, strings.TrimSuffix(name, filepath.Ext(name)))
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			for _, file := range files {
+				reader, err := file.Open()
+				if err != nil {
+					return err
+				}
+				data, err := io.ReadAll(reader)
+				reader.Close()
+				if err != nil {
+					return err
+				}
+				if err := os.WriteFile(filepath.Join(dir, file.Name()), data, 0o644); err != nil {
+					return err
+				}
+			}
+			continue
+		}
 		path := filepath.Join(responsesDir, name)
 		if err := os.WriteFile(path, []byte(formatResponseArtifact(step.Response)), 0o644); err != nil {
 			return err

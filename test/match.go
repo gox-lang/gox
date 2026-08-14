@@ -128,6 +128,12 @@ func matchStringCustomMap(rule string, expected map[string]ExpectedStringRule, r
 }
 
 func valuesEqual(a, b any) bool {
+	if equal, handled := fileValuesEqual(a, b); handled {
+		return equal
+	}
+	if equal, handled := fileValuesEqual(b, a); handled {
+		return equal
+	}
 	if numericValuesEqual(a, b) {
 		return true
 	}

@@ -38,7 +38,14 @@ type Session map[string]any
 type RequestURLParams map[string]string
 type RequestHeaders map[string]string
 type RequestCookies map[string]string
-type ActionParams map[string]any
+
+// ActionParams contains Action arguments in declaration order, matching the
+// positional form fields produced by the GOX JavaScript client.
+type ActionParams []any
+
+// FormData contains multipart form fields. Supported values are string,
+// []string, gox.File and []gox.File.
+type FormData map[string]any
 
 // PipeRequest is implemented by request types that can be executed by the GoX test runner.
 type PipeRequest interface {

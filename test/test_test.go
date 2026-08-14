@@ -1,13 +1,90 @@
 package test
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gox-lang/gox"
 )
+
+func TestRequestBodyFormDataIncludesFieldsAndFiles(t *testing.T) {
+	file, err := gox.NewFile(gox.FileConfig{Name: "avatar.txt", Type: "text/plain", Content: strings.NewReader("George")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := RequestBody.FormData(FormData{"name": "George", "tags": []string{"one", "two"}, "avatar": file})
+	data, contentType, err := body.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mediaType != "multipart/form-data" {
+		t.Fatalf("media type = %q", mediaType)
+	}
+	reader := multipart.NewReader(bytes.NewReader(data), params["boundary"])
+	values := map[string][]string{}
+	files := map[string]string{}
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := io.ReadAll(part)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if part.FileName() == "" {
+			values[part.FormName()] = append(values[part.FormName()], string(content))
+		} else {
+			files[part.FormName()] = part.FileName() + ":" + part.Header.Get("Content-Type") + ":" + string(content)
+		}
+	}
+	if strings.Join(values["tags"], ",") != "one,two" || values["name"][0] != "George" {
+		t.Fatalf("values = %#v", values)
+	}
+	if files["avatar"] != "avatar.txt:text/plain:George" {
+		t.Fatalf("files = %#v", files)
+	}
+}
+
+func TestExpectedBodyEqualComparesGoxFileLogically(t *testing.T) {
+	expected, _ := gox.NewFile(gox.FileConfig{Name: "report.txt", Type: "text/plain", Content: strings.NewReader("content")})
+	result := ExpectedBody.Equal(expected).MatchHTTPBody("text/plain", `attachment; filename="report.txt"`, []byte("content"))
+	if !result.Match {
+		t.Fatalf("match = false: %#v", result)
+	}
+}
+
+func TestSaveWritesFileResponseAsBinaryArtifact(t *testing.T) {
+	root := t.TempDir()
+	SetRuntimeContext(RuntimeContext{Name: "DownloadTest", Mode: ModeTest, ResultRoot: root})
+	defer ClearRuntimeContext()
+	step := StepResult{Index: 1, Type: "request", Method: "GET", URL: "/report", Match: true, Response: ResponseSnapshot{StatusCode: 200, Status: "200 OK", Headers: map[string][]string{"Content-Type": {"text/plain"}, "Content-Disposition": {`inline; filename="report.txt"`}}, Body: "George"}}
+	Save(ExecuteResult{Match: true, Steps: []StepResult{step}})
+	directory := strings.TrimSuffix(responseArtifactName(step), filepath.Ext(responseArtifactName(step)))
+	path := filepath.Join(root, "DownloadTest", "responses", directory, "report.txt")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "George" {
+		t.Fatalf("content = %q", data)
+	}
+}
 
 func TestExpectedHeadersPartial(t *testing.T) {
 	rule := ExpectedHeaders.Contains(Map{
@@ -93,9 +170,12 @@ func TestExpectedActionResultPartial(t *testing.T) {
 
 func TestRequestBodyJSON(t *testing.T) {
 	body := RequestBody.JSON(map[string]any{"name": "milo"})
-	data, err := body.Bytes()
+	data, contentType, err := body.Encode()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if contentType != "application/json; charset=utf-8" {
+		t.Fatalf("content type = %q", contentType)
 	}
 	var decoded map[string]any
 	if err := json.Unmarshal(data, &decoded); err != nil {
