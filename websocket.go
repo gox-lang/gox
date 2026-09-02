@@ -153,6 +153,7 @@ func (s *Socket) ID() string {
 // BindSocketIdentity reserves the immutable host-owned socket identifier and
 // returns its one-time assignment function. It is reserved for the GOX runtime
 // when constructing real sockets and remote proxies. Rebinding returns nil.
+// gox:internal
 func BindSocketIdentity(s *Socket) func(string) {
 	if s == nil {
 		return nil
@@ -178,11 +179,13 @@ func BindSocketIdentity(s *Socket) func(string) {
 }
 
 // SocketChannelTransport is reserved for the GOX Channel runtime.
+// gox:internal
 type SocketChannelTransport struct {
 	Emit  func(channelID string, event string, values []any) error
 	Leave func(channelID string, reason ChannelDisconnectReason) error
 }
 
+// gox:internal
 func BindSocketChannelTransport(socket *Socket, transport SocketChannelTransport) {
 	if socket == nil {
 		return
@@ -195,6 +198,7 @@ func BindSocketChannelTransport(socket *Socket, transport SocketChannelTransport
 
 // EmitSocketChannelEvent writes one namespaced Channel event. It is reserved
 // for host runtimes; application code emits through channel.Emit.
+// gox:internal
 func EmitSocketChannelEvent(socket *Socket, channelID, event string, values []any) error {
 	if socket == nil {
 		return nil
@@ -208,6 +212,7 @@ func EmitSocketChannelEvent(socket *Socket, channelID, event string, values []an
 	return emit(channelID, event, append([]any(nil), values...))
 }
 
+// gox:internal
 func LeaveSocketChannel(socket *Socket, channelID string, reason ChannelDisconnectReason) error {
 	if socket == nil {
 		return nil
@@ -301,6 +306,7 @@ func (s *Socket) EmitTo(group string, event string, values ...any) {
 
 // SocketGroupBindings attaches group membership and group emission to a
 // socket. It is reserved for the GOX runtime.
+// gox:internal
 type SocketGroupBindings struct {
 	Join     func(group string) error
 	Leave    func(group string) error
@@ -309,6 +315,7 @@ type SocketGroupBindings struct {
 	EmitTo   func(group string, event string, values []any)
 }
 
+// gox:internal
 func BindSocketGroups(s *Socket, bindings SocketGroupBindings) {
 	if s == nil {
 		return
@@ -347,6 +354,7 @@ func (s *Socket) InstanceID() string {
 
 // BindSocketLocation assigns immutable host location metadata. It is reserved
 // for the GOX runtime when constructing real sockets and remote proxies.
+// gox:internal
 func BindSocketLocation(s *Socket, instanceID string, local bool) {
 	if s == nil {
 		return
@@ -386,6 +394,7 @@ func newSocketCollectionWithTransport(resolve func() []*Socket, emit func(event 
 
 // BindSocketSiblings attaches the runtime resolver used by socket.Siblings.
 // It is intended only for use by the GOX WebSocket runtime.
+// gox:internal
 func BindSocketSiblings(socket *Socket, resolve func() []*Socket) {
 	if socket == nil || resolve == nil {
 		return
@@ -395,6 +404,7 @@ func BindSocketSiblings(socket *Socket, resolve func() []*Socket) {
 
 // BindSocketSiblingsEmit attaches the distributed emitter used by
 // socket.Siblings while preserving its dynamic local resolver.
+// gox:internal
 func BindSocketSiblingsEmit(socket *Socket, resolve func() []*Socket, emit func(event string, values []any)) {
 	if socket == nil || resolve == nil || emit == nil {
 		return
@@ -404,6 +414,7 @@ func BindSocketSiblingsEmit(socket *Socket, resolve func() []*Socket, emit func(
 
 // BindSocketSiblingsDisconnect attaches the distributed disconnect operation
 // while preserving the collection's current resolver and emitter.
+// gox:internal
 func BindSocketSiblingsDisconnect(socket *Socket, disconnect func(code WSCloseCode)) {
 	if socket == nil || disconnect == nil || socket.Siblings.state == nil {
 		return
@@ -457,6 +468,7 @@ func (collection SocketCollection) Emit(event string, values ...any) {
 
 // BindSocketPacket attaches the already-encoded packet writer used by the
 // cluster runtime. Application code should continue using Emit.
+// gox:internal
 func BindSocketPacket(s *Socket, write func(event string, packet []byte) error) {
 	if s == nil || write == nil {
 		return
@@ -468,6 +480,7 @@ func BindSocketPacket(s *Socket, write func(event string, packet []byte) error) 
 
 // WriteSocketPacket writes one validated GOX protocol packet without encoding
 // it again. It is intended only for host and cluster runtimes.
+// gox:internal
 func WriteSocketPacket(s *Socket, event string, packet []byte) error {
 	if s == nil {
 		return nil
@@ -521,6 +534,7 @@ func (s *Socket) Disconnect(code WSCloseCode) {
 
 // BindSocketDisconnect attaches the transport used by Socket.Disconnect.
 // It is intended only for use by the GOX WebSocket runtime.
+// gox:internal
 func BindSocketDisconnect(s *Socket, disconnect func(code WSCloseCode, reason string)) {
 	if s == nil {
 		return
@@ -552,6 +566,7 @@ func (s *Socket) Emit(event string, values ...any) {
 
 // BindSocketEmit attaches the event writer and flushes queued emissions. It is
 // intended only for use by the GOX WebSocket runtime.
+// gox:internal
 func BindSocketEmit(s *Socket, emit func(event string, values []any) error) {
 	if s == nil || emit == nil {
 		return
@@ -593,6 +608,7 @@ func (s *Socket) EmitAwait(out any, event string, values ...any) error {
 
 // BindSocketRequest attaches the request/reply transport used by generated
 // Emit(...).Await(&out) calls.
+// gox:internal
 func BindSocketRequest(s *Socket, request func(event string, values []any, out any) error) {
 	if s == nil || request == nil {
 		return
@@ -604,6 +620,7 @@ func BindSocketRequest(s *Socket, request func(event string, values []any, out a
 
 // BindSocketClusterRequest attaches the host-owned transport that routes one
 // already validated distributed request through this individual socket.
+// gox:internal
 func BindSocketClusterRequest(s *Socket, request func(originInstanceID string, correlationID []byte, packet []byte) error) {
 	if s == nil || request == nil {
 		return
@@ -616,6 +633,7 @@ func BindSocketClusterRequest(s *Socket, request func(originInstanceID string, c
 // RouteSocketClusterRequest is reserved for the GOX cluster runtime. It does
 // not exist on SocketCollection, because a request must have exactly one
 // browser and exactly one reply.
+// gox:internal
 func RouteSocketClusterRequest(s *Socket, originInstanceID string, correlationID []byte, packet []byte) error {
 	if s == nil {
 		return fmt.Errorf("distributed socket target is unavailable")
@@ -631,6 +649,7 @@ func RouteSocketClusterRequest(s *Socket, originInstanceID string, correlationID
 
 // BindSocketClusterCancel attaches cancellation for a distributed request
 // that was previously routed through this individual socket.
+// gox:internal
 func BindSocketClusterCancel(s *Socket, cancel func(correlationID []byte) bool) {
 	if s == nil || cancel == nil {
 		return
@@ -642,6 +661,7 @@ func BindSocketClusterCancel(s *Socket, cancel func(correlationID []byte) bool) 
 
 // CancelSocketClusterRequest marks an in-flight distributed request as
 // canceled. A later browser reply is consumed but never republished.
+// gox:internal
 func CancelSocketClusterRequest(s *Socket, correlationID []byte) bool {
 	if s == nil {
 		return false
@@ -701,6 +721,7 @@ func (s *Socket) OnNamed(event string, parameterNames []string, handler any) {
 
 // OnRegistered registers the complete compiler-provided event contract.
 // Application code uses On; this method is reserved for generated GOX code.
+// gox:internal
 func (s *Socket) OnRegistered(event string, parameterNames []string, hasReply bool, handler any) {
 	if s == nil || event == "" || handler == nil {
 		return
@@ -722,6 +743,7 @@ func (s *Socket) OnRegistered(event string, parameterNames []string, hasReply bo
 
 // DispatchWhen executes a registered lifecycle handler.
 // It is intended for use by the Gox WebSocket runtime.
+// gox:internal
 func (s *Socket) DispatchWhen(event string, args ...any) (value any, handled bool, err error) {
 	handler, handled := s.whenHandler(event)
 	if !handled {
@@ -733,6 +755,7 @@ func (s *Socket) DispatchWhen(event string, args ...any) (value any, handled boo
 
 // DispatchOn executes a registered communication event handler.
 // It is intended for use by the Gox WebSocket runtime.
+// gox:internal
 func (s *Socket) DispatchOn(event string, args ...any) (value any, handled bool, err error) {
 	handler, handled := s.onHandler(event)
 	if !handled {
@@ -753,6 +776,7 @@ func (s *Socket) DispatchOn(event string, args ...any) (value any, handled bool,
 
 // OnParameterTypes returns the strict parameter contract of an On handler. It
 // is intended for use by the GOX WebSocket runtime binder.
+// gox:internal
 func (s *Socket) OnParameterTypes(event string) ([]reflect.Type, bool, error) {
 	handler, handled := s.onHandler(event)
 	if !handled {
@@ -775,6 +799,7 @@ func (s *Socket) OnParameterTypes(event string) ([]reflect.Type, bool, error) {
 
 // OnParameterNames returns the source-level parameter names recorded by the
 // GOX compiler for an On handler.
+// gox:internal
 func (s *Socket) OnParameterNames(event string) ([]string, bool) {
 	signature, ok := s.OnSignature(event)
 	if !ok {
@@ -784,6 +809,7 @@ func (s *Socket) OnParameterNames(event string) ([]string, bool) {
 }
 
 // OnSignature returns the compiler-recorded contract for an On handler.
+// gox:internal
 func (s *Socket) OnSignature(event string) (WSEventSignature, bool) {
 	if s == nil || event == "" {
 		return WSEventSignature{}, false

@@ -57,6 +57,7 @@ const (
 // ChannelHandler configures one on-demand logical channel definition.
 type ChannelHandler func(channel *Channel)
 
+// gox:internal
 // NewChannel constructs a channel definition or active instance. It is used
 // by generated GOX code and the host runtime.
 func NewChannel(id, name, key string) *Channel {
@@ -65,6 +66,7 @@ func NewChannel(id, name, key string) *Channel {
 	return channel
 }
 
+// gox:internal
 // NewChannelGenerationCandidate creates an isolated handler generation backed
 // by the same stable Channel core. Configuration performed on the candidate
 // cannot emit, leave or close the live Channel before it is committed.
@@ -75,6 +77,7 @@ func NewChannelGenerationCandidate(channel *Channel, version string) *Channel {
 	return &Channel{core: channel.core, candidate: &channelGeneration{version: version}}
 }
 
+// gox:internal
 // ValidateChannelGenerationCandidate verifies that a candidate can be
 // committed without changing either candidate or the live Channel.
 func ValidateChannelGenerationCandidate(channel, candidate *Channel) error {
@@ -93,6 +96,7 @@ func ValidateChannelGenerationCandidate(channel, candidate *Channel) error {
 	return nil
 }
 
+// gox:internal
 // CommitChannelGeneration atomically makes candidate the handler generation
 // used by future dispatches. Dispatches that already captured the previous
 // generation continue safely with it.
@@ -110,6 +114,7 @@ func CommitChannelGeneration(channel, candidate *Channel) error {
 	return nil
 }
 
+// gox:internal
 // AbortChannelGeneration discards a pending candidate without changing the
 // live Channel. It is safe to call more than once.
 func AbortChannelGeneration(candidate *Channel) {
@@ -121,6 +126,7 @@ func AbortChannelGeneration(candidate *Channel) {
 
 // GenerationVersion returns the version attached to the currently visible
 // handler generation. An initial unversioned Channel returns an empty string.
+// gox:internal
 func (channel *Channel) GenerationVersion() string {
 	generation := channel.handlerGeneration()
 	if generation == nil {
@@ -176,6 +182,7 @@ func (channel *Channel) Key() string {
 	return key
 }
 
+// gox:internal
 // ChannelRuntimeBindings connects an SDK channel object to its host-owned
 // membership and transport. Application code should not construct it.
 type ChannelRuntimeBindings struct {
@@ -186,6 +193,7 @@ type ChannelRuntimeBindings struct {
 	IsClosed func() bool
 }
 
+// gox:internal
 // BindChannelRuntime installs the active runtime operations for channel.
 func BindChannelRuntime(channel *Channel, bindings ChannelRuntimeBindings) {
 	if channel == nil || channel.core == nil {
@@ -339,6 +347,7 @@ func (channel *Channel) OnNamed(event string, parameterNames []string, handler a
 	channel.OnRegistered(event, parameterNames, handlerReturnsValue(handler), handler)
 }
 
+// gox:internal
 func (channel *Channel) OnRegistered(event string, parameterNames []string, hasReply bool, handler any) {
 	if channel == nil || event == "" || handler == nil {
 		return
@@ -359,6 +368,7 @@ func (channel *Channel) OnRegistered(event string, parameterNames []string, hasR
 	generation.mu.Unlock()
 }
 
+// gox:internal
 func (channel *Channel) DispatchWhen(event string, args ...any) (any, bool, error) {
 	handler, ok := channel.whenHandler(event)
 	if !ok {
@@ -373,6 +383,7 @@ func (channel *Channel) DispatchWhen(event string, args ...any) (any, bool, erro
 	return value, true, err
 }
 
+// gox:internal
 func (channel *Channel) DispatchOn(event string, args ...any) (any, bool, error) {
 	handler, signature, ok := channel.onHandlerAndSignature(event)
 	if !ok {
@@ -391,6 +402,7 @@ func (channel *Channel) DispatchOn(event string, args ...any) (any, bool, error)
 	return returnValue, true, err
 }
 
+// gox:internal
 func (channel *Channel) OnSignature(event string) (WSEventSignature, bool) {
 	if channel == nil || event == "" {
 		return WSEventSignature{}, false
@@ -409,6 +421,7 @@ func (channel *Channel) OnSignature(event string) (WSEventSignature, bool) {
 // OnParameterTypes exposes the strict input contract used by the runtime
 // binder. Channel handlers receive the originating socket as their first
 // parameter, followed by the client payload values.
+// gox:internal
 func (channel *Channel) OnParameterTypes(event string) ([]reflect.Type, bool, error) {
 	handler, handled := channel.onHandler(event)
 	if !handled {
@@ -429,6 +442,7 @@ func (channel *Channel) OnParameterTypes(event string) ([]reflect.Type, bool, er
 	return types, true, nil
 }
 
+// gox:internal
 func (channel *Channel) OnParameterNames(event string) ([]string, bool) {
 	signature, ok := channel.OnSignature(event)
 	if !ok {
@@ -439,6 +453,7 @@ func (channel *Channel) OnParameterNames(event string) ([]string, bool) {
 
 // WhenParameterTypes exposes a strict lifecycle handler contract to the host
 // runtime. It is primarily used to bind arbitrary Channel validation data.
+// gox:internal
 func (channel *Channel) WhenParameterTypes(event string) ([]reflect.Type, bool, error) {
 	handler, handled := channel.whenHandler(event)
 	if !handled {
@@ -569,6 +584,7 @@ type channelRegistryState struct {
 	bindings   ChannelRegistryBindings
 }
 
+// gox:internal
 type ChannelRegistryBindings struct {
 	Get   func(id string) (*Channel, bool)
 	List  func() []*Channel
@@ -581,6 +597,7 @@ type ChannelRegistry struct{ state *channelRegistryState }
 // cluster configured it represents the global directory.
 var Channels = &ChannelRegistry{state: &channelRegistryState{}}
 
+// gox:internal
 func BindChannelRegistry(bindings ChannelRegistryBindings) func() {
 	state := Channels.state
 	state.mu.Lock()

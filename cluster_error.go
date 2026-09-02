@@ -59,6 +59,7 @@ func (cluster *ClusterContext) When(event string, handler any) {
 	cluster.events.mu.Unlock()
 }
 
+// gox:internal
 // DispatchClusterError is used by the host runtime to report a cluster
 // failure without coupling an adapter to the public GOX package.
 func DispatchClusterError(err ClusterError) {

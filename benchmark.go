@@ -7,6 +7,7 @@ var benchmarkHandlerSection struct {
 	fn func(func())
 }
 
+// gox:internal
 func SetBenchmarkHandlerSectionHook(fn func(func())) func() {
 	benchmarkHandlerSection.mu.Lock()
 	previous := benchmarkHandlerSection.fn
@@ -19,6 +20,7 @@ func SetBenchmarkHandlerSectionHook(fn func(func())) func() {
 	}
 }
 
+// gox:internal
 func BenchmarkHandlerSection(fn func()) {
 	if fn == nil {
 		return

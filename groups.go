@@ -33,6 +33,7 @@ func ValidateGroupName(name string) error {
 	return nil
 }
 
+// gox:internal
 type GroupRegistryBindings struct {
 	List         func() []string
 	Members      func(group string) []*Socket
@@ -52,6 +53,7 @@ type GroupRegistry struct{ state *groupRegistryState }
 // Groups exposes ephemeral socket groups known to the active GOX runtime.
 var Groups = GroupRegistry{state: &groupRegistryState{}}
 
+// gox:internal
 func BindGroups(bindings GroupRegistryBindings) func() {
 	state := Groups.state
 	state.mu.Lock()

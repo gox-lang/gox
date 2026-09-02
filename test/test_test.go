@@ -15,6 +15,10 @@ import (
 	"github.com/gox-lang/gox"
 )
 
+type oneShotTestReader struct{ reader *strings.Reader }
+
+func (reader *oneShotTestReader) Read(p []byte) (int, error) { return reader.reader.Read(p) }
+
 func TestRequestBodyFormDataIncludesFieldsAndFiles(t *testing.T) {
 	file, err := gox.NewFile(gox.FileConfig{Name: "avatar.txt", Type: "text/plain", Content: strings.NewReader("George")})
 	if err != nil {
@@ -58,6 +62,25 @@ func TestRequestBodyFormDataIncludesFieldsAndFiles(t *testing.T) {
 	}
 	if files["avatar"] != "avatar.txt:text/plain:George" {
 		t.Fatalf("files = %#v", files)
+	}
+}
+
+func TestRequestBodyFormDataCachesOneShotFilesForRepeatedExecutions(t *testing.T) {
+	file, err := gox.NewFile(gox.FileConfig{Name: "once.txt", Content: &oneShotTestReader{reader: strings.NewReader("once")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := RequestBody.FormData(FormData{"file": file})
+	first, firstType, err := body.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, secondType, err := body.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) || firstType != secondType {
+		t.Fatal("cached multipart body changed between test iterations")
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 // WritePageFile writes a File as an HTTP page response while preserving its
-// filename, MIME type, and lazy/reopenable content source.
+// filename and MIME type while streaming its lazy content source.
 func WritePageFile(ctx *Context, file File) error {
 	if err := validateFileResponseContext(ctx, "gox file"); err != nil {
 		return err
@@ -34,7 +34,9 @@ func WritePageFile(ctx *Context, file File) error {
 	if _, ok := ctx.Response.Headers.Get("Content-Disposition"); !ok {
 		ctx.Response.Headers.Set("Content-Disposition", disposition)
 	}
-	ctx.Response.Headers.Set("Content-Length", strconv.FormatInt(info.Size, 10))
+	if info.Size >= 0 {
+		ctx.Response.Headers.Set("Content-Length", strconv.FormatInt(info.Size, 10))
+	}
 	ctx.Writer.WriteStream(reader)
 	return nil
 }

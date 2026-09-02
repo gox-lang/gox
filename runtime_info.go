@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// gox:internal
 type ServerInfoBindings struct {
 	ProjectName   func() string
 	InstanceID    func() string
@@ -27,6 +28,7 @@ type ServerContext struct{ state *serverInfoState }
 
 var Server = ServerContext{state: &serverInfoState{}}
 
+// gox:internal
 func BindServerInfo(bindings ServerInfoBindings) func() {
 	state := Server.state
 	state.mu.Lock()
@@ -107,6 +109,7 @@ func (server *ServerContext) IsClustered() bool {
 	return false
 }
 
+// gox:internal
 type ClusterInfoBindings struct {
 	Enabled func() bool
 	Adapter func() string
@@ -120,6 +123,7 @@ type clusterInfoState struct {
 
 func newClusterInfoState() *clusterInfoState { return &clusterInfoState{} }
 
+// gox:internal
 func BindClusterInfo(bindings ClusterInfoBindings) func() {
 	state := Cluster.state
 	state.mu.Lock()

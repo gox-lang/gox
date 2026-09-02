@@ -347,6 +347,7 @@ func NewCookies(values map[string]string) Collection[string] {
 	return NewCollection[string](out)
 }
 
+// gox:internal
 // SetRuntimeRequestIP updates the resolved client IP without rebuilding Request.
 // It is intended for the GoX server runtime.
 func SetRuntimeRequestIP(request *Request, ip string) {
@@ -355,6 +356,7 @@ func SetRuntimeRequestIP(request *Request, ip string) {
 	}
 }
 
+// gox:internal
 // SetRuntimeRequestRoute updates route metadata without rebuilding Request.
 // It is intended for the GoX server runtime.
 func SetRuntimeRequestRoute(request *Request, route Route) {

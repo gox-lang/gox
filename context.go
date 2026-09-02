@@ -14,6 +14,7 @@ type Context struct {
 	Error                Error
 }
 
+// gox:internal
 // ResetRuntimeContext clears a Context for reuse by the GoX server runtime.
 // The context and all values reachable through it are request-scoped; callers
 // must not retain them after the request handler returns.
@@ -48,6 +49,7 @@ func (c *Context) markClientAssetWritten(key uint64) {
 	c.clientAssetsSmall = append(c.clientAssetsSmall, key)
 }
 
+// gox:internal
 // SetRuntimeContextState attaches opaque runtime-owned state to a context.
 func SetRuntimeContextState(ctx *Context, state any) {
 	if ctx != nil {
@@ -55,6 +57,7 @@ func SetRuntimeContextState(ctx *Context, state any) {
 	}
 }
 
+// gox:internal
 // RuntimeContextState returns opaque state attached by the GoX server runtime.
 func RuntimeContextState(ctx *Context) any {
 	if ctx == nil {

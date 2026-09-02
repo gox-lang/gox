@@ -91,7 +91,7 @@ func TestWritePageFilesSupportsEmptySlice(t *testing.T) {
 	}
 }
 
-func TestWritePageFilesOpensAllFilesBeforeMutatingResponse(t *testing.T) {
+func TestWritePageFilesStreamsSequentiallyAndReportsLateOpenError(t *testing.T) {
 	first, err := NewFile(FileConfig{Name: "first.txt", Content: strings.NewReader("first")})
 	if err != nil {
 		t.Fatal(err)
@@ -110,11 +110,11 @@ func TestWritePageFilesOpensAllFilesBeforeMutatingResponse(t *testing.T) {
 	if err := WritePageFiles(ctx, []File{first, second}); err == nil {
 		t.Fatal("expected open error")
 	}
-	if !response.Headers.IsEmpty() {
-		t.Fatalf("headers mutated before all files opened: %#v", response.Headers.Values())
+	if response.Headers.IsEmpty() {
+		t.Fatal("expected streaming response headers")
 	}
-	if writer.body.Len() != 0 {
-		t.Fatalf("unexpected body: %q", writer.body.String())
+	if writer.body.Len() == 0 || !strings.Contains(writer.body.String(), "first") {
+		t.Fatalf("expected first file to be streamed, body: %q", writer.body.String())
 	}
 }
 

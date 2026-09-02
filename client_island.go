@@ -4,25 +4,29 @@ import (
 	"encoding/json"
 )
 
-// ClientIslandSnapshot is runtime data used by generated GoX client-island calls.
+// gox:internal
+// ClientAssetTag is runtime data used by generated GoX client-island calls.
 // It is an implementation contract for generated code and the server runtime.
 type ClientAssetTag struct {
 	ID   uint64
 	HTML []byte
 }
 
+// gox:internal
 type ClientIslandSnapshot struct {
 	ScriptURL  string
 	StyleTags  []ClientAssetTag
 	DataAssets []byte
 }
 
+// gox:internal
 // ClientIslandRuntime resolves the current client build for a logical client key.
 type ClientIslandRuntime interface {
 	ResolveClientIsland(clientKey string) (ClientIslandSnapshot, bool)
 	ClientRuntimeHTML() []byte
 }
 
+// gox:internal
 // BindClientIslandRuntime binds the current runtime client-asset resolver to a request context.
 func BindClientIslandRuntime(ctx *Context, runtime ClientIslandRuntime) {
 	if ctx == nil {
@@ -31,6 +35,7 @@ func BindClientIslandRuntime(ctx *Context, runtime ClientIslandRuntime) {
 	ctx.clientIslandRuntime = runtime
 }
 
+// gox:internal
 // WriteClientRuntime writes the shared gox-isle runtime assets once for the response.
 func WriteClientRuntime(ctx *Context) {
 	if ctx == nil || ctx.Writer == nil || ctx.clientIslandRuntime == nil || ctx.clientRuntimeWritten {
@@ -44,6 +49,7 @@ func WriteClientRuntime(ctx *Context) {
 	ctx.clientRuntimeWritten = true
 }
 
+// gox:internal
 // WriteClientIsland writes one client island using the current hot-reload asset snapshot.
 // This function is intended for generated GoX code.
 func WriteClientIsland(ctx *Context, clientKey string, writeOpen func(*Context), writeChildren func(*Context)) {
@@ -81,6 +87,7 @@ func WriteClientIsland(ctx *Context, clientKey string, writeOpen func(*Context),
 	ctx.Writer.WriteRawString(`</gox-isle>`)
 }
 
+// gox:internal
 // WriteClientIslandDataAssets writes the current island's adopted-style-sheet payload.
 // It is intended for generated isolate attribute code.
 func WriteClientIslandDataAssets(ctx *Context) {
@@ -90,6 +97,7 @@ func WriteClientIslandDataAssets(ctx *Context) {
 	ctx.Writer.WriteRawBytes(ctx.currentClientIsland.DataAssets)
 }
 
+// gox:internal
 // WriteClientPropsAttribute writes dynamic client props as an HTML-escaped JSON attribute.
 // Static props are precompiled by the GoX compiler and do not call this function.
 func WriteClientPropsAttribute(w Writer, props map[string]any, spreads ...any) {

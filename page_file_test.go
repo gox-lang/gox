@@ -57,6 +57,24 @@ func TestWritePageFileWritesMetadataAndContent(t *testing.T) {
 	}
 }
 
+func TestWritePageFileStreamsUnknownSizeWithoutContentLength(t *testing.T) {
+	file, err := NewFile(FileConfig{Name: "stream.txt", Content: &observedReader{data: strings.NewReader("stream")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := NewResponse()
+	writer := &pageFileTestWriter{}
+	if err := WritePageFile(&Context{Response: response, Writer: writer}, file); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := response.Headers.Get("Content-Length"); ok {
+		t.Fatal("unknown stream must not advertise Content-Length")
+	}
+	if writer.body.String() != "stream" {
+		t.Fatalf("body = %q", writer.body.String())
+	}
+}
+
 func TestWritePageFileOpensBeforeMutatingHeaders(t *testing.T) {
 	file, err := NewFile(FileConfig{Name: "gone.txt", Content: strings.NewReader("gone")})
 	if err != nil {

@@ -37,6 +37,7 @@ type Response struct {
 	ImportMap    ResponseImportMap
 }
 
+// gox:internal
 // SetRuntimeResponseState attaches opaque runtime-owned state to a response.
 // It is intended for the GoX server runtime.
 func SetRuntimeResponseState(response *Response, state any) {
@@ -45,6 +46,7 @@ func SetRuntimeResponseState(response *Response, state any) {
 	}
 }
 
+// gox:internal
 // RuntimeResponseState returns opaque state attached by the GoX server runtime.
 func RuntimeResponseState(response *Response) any {
 	if response == nil {
@@ -53,12 +55,14 @@ func RuntimeResponseState(response *Response) any {
 	return response.runtimeState
 }
 
+// gox:internal
 func NewResponse() *Response {
 	response := &Response{}
 	ResetRuntimeResponse(response)
 	return response
 }
 
+// gox:internal
 // ResetRuntimeResponse clears and reinitializes a response for reuse by the
 // GoX server runtime. User-visible response state never survives the reset.
 func ResetRuntimeResponse(response *Response) {
@@ -544,6 +548,7 @@ func (r *Response) ensureMutable() {
 
 var runtimeFlowCallsiteResolver func() (file string, line int)
 
+// gox:internal
 // SetRuntimeFlowCallsiteResolver configures source-location capture for generated/runtime execution.
 func SetRuntimeFlowCallsiteResolver(resolver func() (file string, line int)) {
 	runtimeFlowCallsiteResolver = resolver
@@ -558,6 +563,7 @@ func responseFlowCallsite() (string, int) {
 
 var runtimeResponseMutationGuard func(*Response) bool
 
+// gox:internal
 // SetRuntimeResponseMutationGuard configures runtime response mutability checks.
 func SetRuntimeResponseMutationGuard(guard func(*Response) bool) {
 	runtimeResponseMutationGuard = guard
@@ -572,6 +578,7 @@ type ResponseImportMap struct {
 	securitySource string
 }
 
+// gox:internal
 // ResponseImportMapRuntime contains operations reserved for generated GOX
 // code and the server runtime. Application code should use ResponseImportMap
 // directly through Set, Get, Has, Delete and Len.
@@ -579,6 +586,7 @@ type ResponseImportMapRuntime struct {
 	importMap *ResponseImportMap
 }
 
+// gox:internal
 // Runtime returns the runtime-only view used by generated GOX code.
 func (m *ResponseImportMap) Runtime() ResponseImportMapRuntime {
 	return ResponseImportMapRuntime{importMap: m}
@@ -697,6 +705,7 @@ func (p responseImportMapPayload) MarshalJSON() ([]byte, error) {
 	return buf, nil
 }
 
+// gox:internal
 // ApplyCSP applies the import-map CSP required by generated GOX code.
 func (r ResponseImportMapRuntime) ApplyCSP(staticHash string) {
 	m := r.importMap
@@ -721,6 +730,7 @@ func (r ResponseImportMapRuntime) ApplyCSP(staticHash string) {
 	m.response.Headers.Set("Content-Security-Policy", "default-src 'self'; script-src "+scriptSrc+"; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
 }
 
+// gox:internal
 // WriteCompiled writes exactly one import map for generated GOX code.
 func (r ResponseImportMapRuntime) WriteCompiled(w Writer, staticEntries [][2]string, staticScript []byte, staticHash string) {
 	m := r.importMap
@@ -751,6 +761,7 @@ func (r ResponseImportMapRuntime) WriteCompiled(w Writer, staticEntries [][2]str
 	m.emitted = true
 }
 
+// gox:internal
 // SecuritySource returns the CSP source emitted for the import map.
 func (r ResponseImportMapRuntime) SecuritySource() string {
 	m := r.importMap

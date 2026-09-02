@@ -7,6 +7,7 @@ import (
 	"github.com/gox-lang/gox/server"
 )
 
+// gox:internal
 // SessionRegistryBindings connects the public SDK facade to the host-owned
 // session storage. Application code should not construct these bindings.
 type SessionRegistryBindings struct {
@@ -31,6 +32,7 @@ func newSessionRegistry() *SessionRegistry {
 	return &SessionRegistry{state: &sessionRegistryState{}}
 }
 
+// gox:internal
 // BindSessionRegistry installs host runtime bindings and returns an
 // identity-safe cleanup. A cleanup from an older runtime cannot unbind a newer
 // runtime.

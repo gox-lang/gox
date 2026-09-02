@@ -24,6 +24,7 @@ type body struct {
 	err         error
 }
 
+// gox:internal
 func NewBody(reader io.ReadCloser, contentType string) Body {
 	return &body{reader: reader, contentType: contentType}
 }
@@ -147,6 +148,7 @@ func isJSONContentType(contentType string) bool {
 	return contentType == "application/json" || strings.HasSuffix(contentType, "+json")
 }
 
+// gox:internal
 func NewBodyFromBytes(data []byte, contentType string) Body {
 	copyData := make([]byte, len(data))
 	copy(copyData, data)
@@ -154,6 +156,7 @@ func NewBodyFromBytes(data []byte, contentType string) Body {
 }
 
 // ResetRuntimeBody reuses a Body created by NewBody for a new request.
+// gox:internal
 // It is intended for the GoX server runtime.
 func ResetRuntimeBody(value Body, reader io.ReadCloser, contentType string) bool {
 	b, ok := value.(*body)

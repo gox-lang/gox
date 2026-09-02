@@ -44,6 +44,24 @@ func TestWriteActionFileWritesMetadataAndContent(t *testing.T) {
 	}
 }
 
+func TestWriteActionFileStreamsUnknownSizeWithoutContentLength(t *testing.T) {
+	file, err := NewFile(FileConfig{Name: "stream.txt", Content: &observedReader{data: strings.NewReader("stream")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := NewResponse()
+	writer := &pageFileTestWriter{}
+	if err := WriteActionFile(&Context{Response: response, Writer: writer}, file); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := response.Headers.Get("Content-Length"); ok {
+		t.Fatal("unknown stream must not advertise Content-Length")
+	}
+	if writer.body.String() != "stream" {
+		t.Fatalf("body = %q", writer.body.String())
+	}
+}
+
 func TestWriteActionFileOpensBeforeMutatingHeaders(t *testing.T) {
 	file, err := NewFile(FileConfig{Name: "gone.txt", Content: strings.NewReader("gone")})
 	if err != nil {
@@ -160,7 +178,7 @@ func TestWriteActionFilesSupportsEmptySlice(t *testing.T) {
 	}
 }
 
-func TestWriteActionFilesOpensAllFilesBeforeMutatingResponse(t *testing.T) {
+func TestWriteActionFilesStreamsSequentiallyAndReportsLateOpenError(t *testing.T) {
 	first, err := NewFile(FileConfig{Name: "first.txt", Content: strings.NewReader("first")})
 	if err != nil {
 		t.Fatal(err)
@@ -179,11 +197,11 @@ func TestWriteActionFilesOpensAllFilesBeforeMutatingResponse(t *testing.T) {
 	if err := WriteActionFiles(ctx, []File{first, second}); err == nil {
 		t.Fatal("expected open error")
 	}
-	if !response.Headers.IsEmpty() {
-		t.Fatalf("headers mutated before all files opened: %#v", response.Headers.Values())
+	if response.Headers.IsEmpty() {
+		t.Fatal("expected streaming response headers")
 	}
-	if writer.body.Len() != 0 {
-		t.Fatalf("unexpected body: %q", writer.body.String())
+	if writer.body.Len() == 0 || !strings.Contains(writer.body.String(), "first") {
+		t.Fatalf("expected first file to be streamed, body: %q", writer.body.String())
 	}
 }
 

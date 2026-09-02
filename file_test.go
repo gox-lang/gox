@@ -15,6 +15,16 @@ type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }
 
+type observedReader struct {
+	reads int
+	data  *strings.Reader
+}
+
+func (reader *observedReader) Read(p []byte) (int, error) {
+	reader.reads++
+	return reader.data.Read(p)
+}
+
 func TestNewFileRequiresExactlyOneSource(t *testing.T) {
 	if _, err := NewFile(FileConfig{}); err == nil {
 		t.Fatal("expected missing source error")
@@ -67,12 +77,76 @@ func TestNewFileFromContent(t *testing.T) {
 	}
 }
 
+func TestNewFileKeepsGenericContentLazyAndOneShot(t *testing.T) {
+	source := &observedReader{data: strings.NewReader("lazy")}
+	file, err := NewFile(FileConfig{Name: "lazy.txt", Content: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.reads != 0 {
+		t.Fatalf("constructor consumed content with %d reads", source.reads)
+	}
+	if file.Size() != -1 {
+		t.Fatalf("unknown size = %d", file.Size())
+	}
+	reader, err := file.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(reader)
+	_ = reader.Close()
+	if err != nil || string(data) != "lazy" {
+		t.Fatalf("content = %q, %v", data, err)
+	}
+	if _, err := file.Open(); err == nil {
+		t.Fatal("expected one-shot source to reject a second open")
+	}
+}
+
+func TestNewFileOpenSourceIsLazyAndReopenable(t *testing.T) {
+	opens := 0
+	file, err := NewFile(FileConfig{
+		Name: "lazy.txt",
+		Size: 4,
+		Open: func() (io.ReadCloser, error) {
+			opens++
+			return io.NopCloser(strings.NewReader("lazy")), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opens != 0 || file.Size() != 4 {
+		t.Fatalf("opens=%d size=%d", opens, file.Size())
+	}
+	for range 2 {
+		reader, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, reader)
+		_ = reader.Close()
+	}
+	if opens != 2 {
+		t.Fatalf("opens = %d", opens)
+	}
+}
+
 func TestNewFileContentRequiresNameAndPropagatesReadError(t *testing.T) {
 	if _, err := NewFile(FileConfig{Content: strings.NewReader("x")}); err == nil {
 		t.Fatal("expected name error")
 	}
-	if _, err := NewFile(FileConfig{Name: "x.txt", Content: failingReader{}}); err == nil {
-		t.Fatal("expected reader error")
+	file, err := NewFile(FileConfig{Name: "x.txt", Content: failingReader{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := file.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if _, err := io.ReadAll(reader); err == nil {
+		t.Fatal("expected lazy reader error")
 	}
 }
 

@@ -16,10 +16,20 @@ import (
 const defaultFileMIMEType = "application/octet-stream"
 
 type FileConfig struct {
-	Path    string
-	Name    string
-	Type    string
+	// Path creates a lazy, reopenable file backed by a regular filesystem file.
+	Path string
+	Name string
+	Type string
+	// Content is never read by NewFile. bytes.Reader, strings.Reader, and
+	// bytes.Buffer are reopened without copying; other readers are one-shot.
 	Content io.Reader
+	// Open provides a lazy, reopenable content source. It is useful when the
+	// bytes are owned by another subsystem (for example multipart.FileHeader).
+	// Exactly one of Path, Content, or Open must be provided.
+	Open func() (io.ReadCloser, error)
+	// Size is the content size when known. Use -1 when it is unknown. For
+	// Content, zero means "infer when possible, otherwise unknown".
+	Size int64
 }
 
 type FileInfo struct {
@@ -43,21 +53,37 @@ type fileState struct {
 
 	data   []byte
 	reader *bytes.Reader
+	cursor io.ReadCloser
 	loaded bool
 	closed bool
+	used   bool
 }
 
 func NewFile(config FileConfig) (File, error) {
 	hasPath := strings.TrimSpace(config.Path) != ""
 	hasContent := !isNilReader(config.Content)
-	if hasPath == hasContent {
-		return File{}, fmt.Errorf("gox file: exactly one of Path or Content is required")
+	hasOpen := config.Open != nil
+	if boolCount(hasPath, hasContent, hasOpen) != 1 {
+		return File{}, fmt.Errorf("gox file: exactly one of Path, Content, or Open is required")
 	}
 
 	if hasPath {
 		return newPathFile(config)
 	}
+	if hasOpen {
+		return newOpenFile(config)
+	}
 	return newContentFile(config)
+}
+
+func boolCount(values ...bool) int {
+	count := 0
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
 }
 
 // Deprecated: use NewFile with FileConfig.
@@ -107,11 +133,80 @@ func newContentFile(config FileConfig) (File, error) {
 	if err != nil {
 		return File{}, err
 	}
-	data, err := io.ReadAll(config.Content)
-	if err != nil {
-		return File{}, fmt.Errorf("gox file: read content: %w", err)
+	state := &fileState{name: name, contentType: contentType, explicitType: explicitType, size: -1}
+	if config.Size < 0 {
+		state.size = -1
+	} else if config.Size > 0 {
+		state.size = config.Size
 	}
-	return newMaterializedFile(name, contentType, explicitType, data), nil
+	if open, size, ok := reusableReader(config.Content); ok {
+		state.open = open
+		if config.Size == 0 {
+			state.size = size
+		}
+	} else {
+		reader := config.Content
+		state.open = func() (io.ReadCloser, error) {
+			state.mu.Lock()
+			defer state.mu.Unlock()
+			if state.used {
+				return nil, fmt.Errorf("content source has already been consumed")
+			}
+			state.used = true
+			if closer, ok := reader.(io.ReadCloser); ok {
+				return closer, nil
+			}
+			return io.NopCloser(reader), nil
+		}
+	}
+	return File{state: state}, nil
+}
+
+func newOpenFile(config FileConfig) (File, error) {
+	name, err := normalizeFileName(config.Name)
+	if err != nil {
+		return File{}, err
+	}
+	contentType, explicitType, err := resolveFileMIMEType(name, config.Type)
+	if err != nil {
+		return File{}, err
+	}
+	size := config.Size
+	if size < 0 {
+		size = -1
+	}
+	return File{state: &fileState{
+		name: name, contentType: contentType, explicitType: explicitType,
+		size: size, open: config.Open,
+	}}, nil
+}
+
+func reusableReader(reader io.Reader) (func() (io.ReadCloser, error), int64, bool) {
+	switch value := reader.(type) {
+	case *bytes.Reader:
+		snapshot := *value
+		size := snapshot.Size()
+		return func() (io.ReadCloser, error) {
+			clone := snapshot
+			_, _ = clone.Seek(0, io.SeekStart)
+			return io.NopCloser(&clone), nil
+		}, size, true
+	case *strings.Reader:
+		snapshot := *value
+		size := snapshot.Size()
+		return func() (io.ReadCloser, error) {
+			clone := snapshot
+			_, _ = clone.Seek(0, io.SeekStart)
+			return io.NopCloser(&clone), nil
+		}, size, true
+	case *bytes.Buffer:
+		data := value.Bytes()
+		return func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(data)), nil
+		}, int64(len(data)), true
+	default:
+		return nil, -1, false
+	}
 }
 
 func newMaterializedFile(name, contentType string, explicitType bool, data []byte) File {
@@ -306,15 +401,41 @@ func (state *fileState) setMaterializedLocked(data []byte, position int64) {
 }
 
 func (file File) Read(p []byte) (int, error) {
-	if err := file.ensureCompatibilityReader(); err != nil {
-		if file.state == nil {
-			return 0, io.EOF
-		}
-		return 0, err
+	if file.state == nil {
+		return 0, io.EOF
 	}
 	file.state.mu.Lock()
-	defer file.state.mu.Unlock()
-	return file.state.reader.Read(p)
+	if file.state.closed {
+		file.state.mu.Unlock()
+		return 0, fmt.Errorf("gox file: closed")
+	}
+	if file.state.loaded {
+		n, err := file.state.reader.Read(p)
+		file.state.mu.Unlock()
+		return n, err
+	}
+	cursor := file.state.cursor
+	open := file.state.open
+	file.state.mu.Unlock()
+	if cursor == nil {
+		if open == nil {
+			return 0, fmt.Errorf("gox file: content source is unavailable")
+		}
+		opened, err := open()
+		if err != nil {
+			return 0, fmt.Errorf("gox file: open content: %w", err)
+		}
+		file.state.mu.Lock()
+		if file.state.cursor == nil {
+			file.state.cursor = opened
+			cursor = opened
+		} else {
+			cursor = file.state.cursor
+			_ = opened.Close()
+		}
+		file.state.mu.Unlock()
+	}
+	return cursor.Read(p)
 }
 
 func (file File) Write(p []byte) (int, error) {
@@ -355,7 +476,12 @@ func (file File) Close() error {
 	}
 	file.state.mu.Lock()
 	file.state.closed = true
+	cursor := file.state.cursor
+	file.state.cursor = nil
 	file.state.mu.Unlock()
+	if cursor != nil {
+		return cursor.Close()
+	}
 	return nil
 }
 
@@ -363,15 +489,10 @@ func (file File) WriteTo(writer io.Writer) (int64, error) {
 	if writer == nil {
 		return 0, fmt.Errorf("gox file: writer cannot be nil")
 	}
-	if err := file.ensureCompatibilityReader(); err != nil {
-		return 0, err
+	if file.state == nil {
+		return 0, fmt.Errorf("gox file: zero file")
 	}
-	file.state.mu.Lock()
-	defer file.state.mu.Unlock()
-	if file.state.closed {
-		return 0, fmt.Errorf("gox file: closed")
-	}
-	return file.state.reader.WriteTo(writer)
+	return io.Copy(writer, struct{ io.Reader }{Reader: file})
 }
 
 func (file File) ReadFrom(reader io.Reader) (int64, error) {

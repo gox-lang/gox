@@ -2,6 +2,7 @@ package gox
 
 import "sync"
 
+// gox:internal
 // SocketRegistryBindings connects the public SDK facade to the host-owned live
 // socket registry. Application code should not construct these bindings.
 type SocketRegistryBindings struct {
@@ -34,6 +35,7 @@ func newSocketRegistry() *SocketRegistry {
 	return &SocketRegistry{state: &socketRegistryState{}}
 }
 
+// gox:internal
 // BindSocketRegistry installs host runtime bindings and returns an identity-safe
 // cleanup. A cleanup from an older runtime cannot unbind a newer runtime.
 func BindSocketRegistry(bindings SocketRegistryBindings) func() {

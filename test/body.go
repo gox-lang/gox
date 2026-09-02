@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gox-lang/gox"
 )
@@ -31,6 +32,14 @@ type RequestBodyQuery struct {
 
 type RequestBodyFormData struct {
 	Values FormData
+	cache  *encodedFormData
+}
+
+type encodedFormData struct {
+	once        sync.Once
+	data        []byte
+	contentType string
+	err         error
 }
 
 type RequestBodyJSON struct {
@@ -58,15 +67,25 @@ func (b RequestBodyQuery) Encode() ([]byte, string, error) {
 }
 
 func (b RequestBodyFormData) Encode() ([]byte, string, error) {
+	if b.cache != nil {
+		b.cache.once.Do(func() {
+			b.cache.data, b.cache.contentType, b.cache.err = encodeFormData(b.Values)
+		})
+		return b.cache.data, b.cache.contentType, b.cache.err
+	}
+	return encodeFormData(b.Values)
+}
+
+func encodeFormData(values FormData) ([]byte, string, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	keys := make([]string, 0, len(b.Values))
-	for key := range b.Values {
+	keys := make([]string, 0, len(values))
+	for key := range values {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		if err := writeFormValue(writer, key, b.Values[key]); err != nil {
+		if err := writeFormValue(writer, key, values[key]); err != nil {
 			return nil, "", err
 		}
 	}
@@ -142,7 +161,7 @@ func (requestBodyFactory) Query(values map[string]string) RequestBodyQuery {
 	return RequestBodyQuery{Values: values}
 }
 func (requestBodyFactory) FormData(values FormData) RequestBodyFormData {
-	return RequestBodyFormData{Values: values}
+	return RequestBodyFormData{Values: values, cache: &encodedFormData{}}
 }
 func (requestBodyFactory) JSON(value any) RequestBodyJSON { return RequestBodyJSON{Value: value} }
 

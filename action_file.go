@@ -2,13 +2,12 @@ package gox
 
 import (
 	"fmt"
-	"io"
 	"mime"
 	"strconv"
 )
 
 // WriteActionFile writes a File as a successful Action response while
-// preserving its filename, MIME type, size, and reopenable content source.
+// preserving its filename and MIME type while streaming its content source.
 func WriteActionFile(ctx *Context, file File) error {
 	const prefix = "gox action file"
 	if err := validateFileResponseContext(ctx, prefix); err != nil {
@@ -34,16 +33,17 @@ func WriteActionFile(ctx *Context, file File) error {
 	ctx.Response.Headers.Set("Action-Type", "file")
 	ctx.Response.Headers.Set("Content-Type", info.ContentType)
 	ctx.Response.Headers.Set("Content-Disposition", disposition)
-	ctx.Response.Headers.Set("Content-Length", strconv.FormatInt(info.Size, 10))
-	if _, err := io.Copy(ctx.Writer, reader); err != nil {
+	if info.Size >= 0 {
+		ctx.Response.Headers.Set("Content-Length", strconv.FormatInt(info.Size, 10))
+	}
+	if _, err := copyFileContent(ctx.Writer, reader); err != nil {
 		return fmt.Errorf("%s: write response: %w", prefix, err)
 	}
 	return nil
 }
 
-// WriteActionFiles writes Files as an ordered multipart/form-data successful
-// Action response. Every file is opened before response headers or body bytes
-// are written, so an unavailable source cannot leave a partial response.
+// WriteActionFiles streams Files in order as a multipart/form-data successful
+// Action response. Sources are opened one at a time.
 func WriteActionFiles(ctx *Context, files []File) error {
 	return writeMultipartFiles(ctx, files, "gox action files", func(contentType string) {
 		ctx.Response.Headers.Set("Action-Response", "success")

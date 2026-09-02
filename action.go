@@ -12,8 +12,10 @@ import (
 
 type Action interface{}
 
+// gox:internal
 const MaxJavaScriptSafeInteger int64 = 1<<53 - 1
 
+// gox:internal
 func ActionSignedIntegerType(value int64) string {
 	if value < -MaxJavaScriptSafeInteger || value > MaxJavaScriptSafeInteger {
 		return "bigint"
@@ -21,6 +23,7 @@ func ActionSignedIntegerType(value int64) string {
 	return "number"
 }
 
+// gox:internal
 func ActionUnsignedIntegerType(value uint64) string {
 	if value > uint64(MaxJavaScriptSafeInteger) {
 		return "bigint"
@@ -28,10 +31,13 @@ func ActionUnsignedIntegerType(value uint64) string {
 	return "number"
 }
 
+// gox:internal
 type ActionHandler func(ctx *Context)
 
+// gox:internal
 type ActionParamType uint8
 
+// gox:internal
 const (
 	ActionString ActionParamType = iota
 	ActionNumber
@@ -42,17 +48,20 @@ const (
 	ActionJSON
 )
 
+// gox:internal
 type ActionSpec struct {
 	Name   string
 	Params []ActionParamSpec
 }
 
+// gox:internal
 type ActionParamSpec struct {
 	Name   string
 	Type   ActionParamType
 	JSName string
 }
 
+// gox:internal
 func ValidateActionParams(ctx *Context, spec *ActionSpec, dest ...any) error {
 	if ctx == nil || spec == nil {
 		return fmt.Errorf("Action(): invalid action invocation")
