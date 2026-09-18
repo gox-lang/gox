@@ -1,6 +1,6 @@
-# IDE
-.vscode/
-.idea/
+# Editors
+/.vscode/
+/.idea/
 
 # OS
 .DS_Store
@@ -9,11 +9,11 @@ Thumbs.db
 # Logs
 *.log
 
-# Build
+# Build output
 /build/
 /dist/
 
-# Test output
+# Go test output
 *.test
 *.out
 
