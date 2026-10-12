@@ -56,6 +56,11 @@ Public APIs for testing GOX applications.
 import "github.com/gox-lang/gox/test"
 ```
 
+## TLS configuration
+
+See [TLS configuration](TLS.md) for the automatic/manual HTTPS contract and
+DNS provider configuration. Runtime support is supplied separately by gox-server.
+
 ## Installation
 
 GOX Server automatically manages the GOX SDK as part of its toolchain. GOX projects do not need to install or manage the SDK manually.

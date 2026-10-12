@@ -1,6 +1,7 @@
 package server
 
 type HTTPConfig struct {
+	TLS                 TLSConfig
 	Host                string
 	Port                int
 	MethodsAllowed      []string

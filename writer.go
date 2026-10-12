@@ -15,7 +15,8 @@ type Writer interface {
 	WriteTextBytes(value []byte)
 	WriteRawBytes(value []byte)
 	WriteBytes(value []byte)
-	WriteByte(value byte)
+	// WriteByte writes one byte and reports failures to the caller.
+	WriteByte(value byte) error
 	WriteStream(value io.Reader)
 	WriteError(value error)
 	WriteTextBool(value bool)

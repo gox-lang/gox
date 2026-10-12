@@ -73,14 +73,18 @@ func WriteClientIsland(ctx *Context, clientKey string, writeOpen func(*Context),
 	}
 	ctx.Writer.WriteRawString(`<gox-isle data-script="`)
 	ctx.Writer.WriteTextString(island.ScriptURL)
-	ctx.Writer.WriteByte('"')
+	if err := ctx.Writer.WriteByte('"'); err != nil {
+		panic(err)
+	}
 	previous := ctx.currentClientIsland
 	ctx.currentClientIsland = &island
 	if writeOpen != nil {
 		writeOpen(ctx)
 	}
 	ctx.currentClientIsland = previous
-	ctx.Writer.WriteByte('>')
+	if err := ctx.Writer.WriteByte('>'); err != nil {
+		panic(err)
+	}
 	if writeChildren != nil {
 		writeChildren(ctx)
 	}
@@ -125,5 +129,7 @@ func WriteClientPropsAttribute(w Writer, props map[string]any, spreads ...any) {
 	}
 	w.WriteRawString(` data-props="`)
 	w.WriteTextBytes(encoded)
-	w.WriteByte('"')
+	if err := w.WriteByte('"'); err != nil {
+		panic(err)
+	}
 }

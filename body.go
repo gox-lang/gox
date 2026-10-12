@@ -12,7 +12,7 @@ type Body interface {
 	GetBytes() ([]byte, error)
 	ToText() (string, error)
 	ToJSON(out any) error
-	WriteTo(dst io.Writer) error
+	WriteTo(dst io.Writer) (int64, error)
 }
 
 type body struct {
@@ -61,9 +61,9 @@ func (b *body) ToJSON(out any) error {
 	return json.Unmarshal(data, out)
 }
 
-func (b *body) WriteTo(dst io.Writer) error {
+func (b *body) WriteTo(dst io.Writer) (int64, error) {
 	if dst == nil {
-		return fmt.Errorf("gox body write: destination cannot be nil")
+		return 0, fmt.Errorf("gox body write: destination cannot be nil")
 	}
 
 	b.mu.Lock()
@@ -72,10 +72,13 @@ func (b *body) WriteTo(dst io.Writer) error {
 		err := b.err
 		b.mu.Unlock()
 		if err != nil {
-			return err
+			return 0, err
 		}
-		_, err = dst.Write(data)
-		return err
+		n, err := dst.Write(data)
+		if err == nil && n < len(data) {
+			err = io.ErrShortWrite
+		}
+		return int64(n), err
 	}
 
 	reader := b.reader
@@ -84,28 +87,27 @@ func (b *body) WriteTo(dst io.Writer) error {
 	b.mu.Unlock()
 
 	if reader == nil {
-		_, err := dst.Write(nil)
-		return err
+		return 0, nil
 	}
-	_, err := io.Copy(dst, reader)
+	n, err := io.Copy(dst, reader)
 	closeErr := reader.Close()
 	if err != nil {
 		b.mu.Lock()
 		b.err = err
 		b.mu.Unlock()
-		return err
+		return n, err
 	}
 	if closeErr != nil {
 		b.mu.Lock()
 		b.err = closeErr
 		b.mu.Unlock()
-		return closeErr
+		return n, closeErr
 	}
 	b.mu.Lock()
 	b.data = nil
 	b.err = nil
 	b.mu.Unlock()
-	return nil
+	return n, nil
 }
 
 func (b *body) load() ([]byte, error) {
