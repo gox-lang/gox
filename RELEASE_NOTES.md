@@ -1,3 +1,13 @@
+# GOX SDK v1.1.1
+
+Fixes multipart file responses for Fetch FormData parsers, including Node.js 22.
+Action and page responses now quote form-data parameters and preserve UTF-8
+filenames instead of using RFC 2231 filename parameters. Adds integration
+coverage for empty responses, multiple files, Unicode, and quoted filenames.
+
+No Go API or cluster packet format changes. GOX Server and RedisAdapter must
+update their SDK requirements together.
+
 # GOX SDK v1.1.0
 
 This release prepares the SDK for automatic and manual HTTPS support and corrects

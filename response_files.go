@@ -3,9 +3,9 @@ package gox
 import (
 	"fmt"
 	"io"
-	"mime"
 	"mime/multipart"
 	"net/textproto"
+	"strings"
 	"sync"
 )
 
@@ -50,13 +50,10 @@ func writeMultipartFiles(ctx *Context, files []File, prefix string, setHeaders f
 
 	for index, file := range files {
 		info := file.Info()
-		disposition := mime.FormatMediaType("form-data", map[string]string{
-			"name":     "files",
-			"filename": info.Name,
-		})
-		if disposition == "" {
-			return fmt.Errorf("%s: invalid response filename at index %d: %q", prefix, index, info.Name)
-		}
+		// FormData parsers expect quoted parameters and UTF-8 filenames,
+		// rather than RFC 2231 filename* parameters from mime.FormatMediaType.
+		disposition := `form-data; name="files"; filename="` +
+			strings.ReplaceAll(info.Name, `"`, "%22") + `"`
 
 		header := make(textproto.MIMEHeader)
 		header.Set("Content-Disposition", disposition)
