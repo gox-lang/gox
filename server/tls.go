@@ -16,7 +16,9 @@ type DNSProvider interface {
 type TLSConfig struct {
 	Enabled bool
 
-	// Type is "auto" or "manual". An empty value means "auto".
+	// Type is "auto", "http-01", "tls-alpn-01", "dns-01", or "manual".
+	// An empty value means "auto". Auto without DNS lets CertMagic select
+	// HTTP-01 or TLS-ALPN-01; auto with DNS uses DNS-01.
 	Type string
 
 	// Port is the HTTPS listener port, independent of HTTPConfig.Port.
@@ -35,11 +37,13 @@ type TLSConfig struct {
 	CertFile string
 	KeyFile  string
 
-	// DNS selects DNS-01 validation in auto mode. Nil selects HTTP-01.
+	// DNS selects DNS-01 validation in auto mode and is required in dns-01 mode.
+	// It is invalid in http-01, tls-alpn-01, and manual modes.
 	// The provider must be non-nil when supplied and is invalid in manual mode.
 	DNS DNSProvider
 
-	// RedirectHTTP redirects ordinary HTTP requests to HTTPS.
+	// RedirectHTTP redirects ordinary HTTP requests to public HTTPS port 443,
+	// independently of the internal TLS listener Port.
 	// It does not disable ACME validation when false.
 	RedirectHTTP bool
 }

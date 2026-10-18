@@ -25,7 +25,8 @@ writer method signatures to follow Go's standard interfaces.
 
 **This release defines the configuration contract only.** HTTPS listeners,
 certificate issuance, renewal, and scaffold support require the corresponding
-gox-server integration. See [TLS configuration](https://github.com/gox-lang/gox/blob/v1.1.0/TLS.md).
+gox-server integration. TLS documentation is maintained in `gox-docs`,
+in `config/http.md`.
 
 ## Writer fixes and migration
 

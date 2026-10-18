@@ -58,8 +58,8 @@ import "github.com/gox-lang/gox/test"
 
 ## TLS configuration
 
-See [TLS configuration](TLS.md) for the automatic/manual HTTPS contract and
-DNS provider configuration. Runtime support is supplied separately by gox-server.
+TLS and DNS provider documentation is maintained in `gox-docs`, in
+`config/http.md`. Runtime support is supplied by GOX Server.
 
 ## Installation
 
