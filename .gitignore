@@ -20,3 +20,6 @@ Thumbs.db
 # Coverage
 coverage.out
 coverage.html
+
+# Local agent instructions
+AGENTS.md
